@@ -14,4 +14,4 @@ node_modules/
 *.pem
 
 # 本地原始收款码目录（发布版本在 src/assets/，随仓库公开）
-assets/
+/assets/
