@@ -1,0 +1,14 @@
+# 构建产物
+dist/
+
+# 参考源码快照（第三方仓库源码，各自保留原许可，不入库）
+_reference/
+
+node_modules/
+*.tgz
+*.zip
+.DS_Store
+
+# Chrome 打包产物（.pem 是扩展私钥，严禁入库/外传）
+*.crx
+*.pem

@@ -1,0 +1,193 @@
+/* hover-translate 风格弹窗：白色卡片 + 顶部标题栏 + 标签页 + 列表式设置项 */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 360px;
+  font-family: Roboto, "Noto Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 13px;
+  color: #1f1f1f;
+  background: #f6f7fb;
+}
+
+body { display: flex; flex-direction: column; min-height: 480px; max-height: 560px; }
+
+/* ---- 头部 ---- */
+.kt-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #ffffff;
+  border-bottom: 1px solid #e7e9f0;
+}
+
+.kt-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kt-title { font-size: 15px; font-weight: 600; flex: 1; }
+
+.kt-lang-select {
+  font-size: 12px;
+  border: 1px solid #d7dbe6;
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: #fff;
+  color: #333;
+  outline: none;
+}
+
+/* ---- 标签页 ---- */
+.kt-tabs {
+  display: flex;
+  background: #ffffff;
+  border-bottom: 1px solid #e7e9f0;
+  padding: 0 10px;
+}
+
+.kt-tab {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 10px 4px 8px;
+  font-size: 13.5px;
+  color: #666;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.kt-tab.active {
+  color: #2563eb;
+  font-weight: 600;
+  border-bottom-color: #2563eb;
+}
+
+/* ---- 内容 ---- */
+main { flex: 1; overflow-y: auto; padding: 10px 14px 6px; }
+
+.kt-panel { display: block; }
+.kt-hidden { display: none !important; }
+
+.kt-group-title {
+  margin: 12px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8a8f9e;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.kt-group-title:first-child { margin-top: 2px; }
+
+.kt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #ffffff;
+  border: 1px solid #eceef4;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.kt-row select {
+  max-width: 190px;
+  font-size: 12.5px;
+  border: 1px solid #d7dbe6;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: #fff;
+  color: #333;
+  outline: none;
+}
+
+.kt-row input[type="range"] { width: 140px; accent-color: #2563eb; }
+
+.kt-row-switch { cursor: pointer; }
+
+/* 开关 */
+.kt-switch { position: relative; display: inline-block; width: 34px; height: 18px; flex: none; }
+.kt-switch input { opacity: 0; width: 0; height: 0; }
+.kt-switch i {
+  position: absolute;
+  inset: 0;
+  background: #c9cdd8;
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+.kt-switch i::before {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.kt-switch input:checked + i { background: #2563eb; }
+.kt-switch input:checked + i::before { transform: translateX(16px); }
+
+/* 21 宫格位置选择 */
+.kt-position-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background: #fff;
+  border: 1px solid #eceef4;
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 6px;
+}
+.kt-position-grid button {
+  aspect-ratio: 2.6 / 1;
+  border: 1px solid #e3e6ee;
+  border-radius: 4px;
+  background: #f2f4f8;
+  cursor: pointer;
+  padding: 0;
+}
+.kt-position-grid button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.kt-actions { margin: 12px 0 8px; text-align: center; }
+
+.kt-btn {
+  border: 1px solid #d7dbe6;
+  background: #ffffff;
+  color: #d93025;
+  font-size: 12.5px;
+  border-radius: 8px;
+  padding: 6px 18px;
+  cursor: pointer;
+}
+.kt-btn:hover { background: #fdeeee; }
+
+.kt-btn-secondary { color: #2563eb; border-color: #b9c8f2; }
+.kt-btn-secondary:hover { background: #eef3ff; }
+
+.kt-footer {
+  padding: 8px 14px;
+  text-align: right;
+  font-size: 11px;
+  color: #9aa0ae;
+  background: #ffffff;
+  border-top: 1px solid #e7e9f0;
+}

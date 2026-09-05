@@ -1,0 +1,259 @@
+/* ============ 内置字体（OFL 许可，随扩展分发） ============ */
+
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Atkinson_Hyperlegible/regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Atkinson Hyperlegible";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Atkinson_Hyperlegible/bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Cascadia_Code/regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Cascadia Code";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Cascadia_Code/bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Noto Sans";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Noto_Sans/regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Noto Sans";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Noto_Sans/bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Average Sans";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Average_Sans/regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Roboto";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Roboto/regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Roboto";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Roboto/bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Bona Nova";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Bona_Nova/regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: "Bona Nova";
+  src: url("chrome-extension://__MSG_@@extension_id__/fonts/Bona_Nova/bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* ============ 整行字幕覆盖层 ============ */
+
+#kt-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  transform: translateX(-50%);
+  width: min(var(--kt-text-width, 820px), calc(100% - 32px));
+  min-width: 0;
+  padding: 2px 8px;
+  z-index: 60;
+  pointer-events: none; /* 容器不挡操作，只有里面的单词可命中 */
+
+  font-family: var(--kt-font-family, "Atkinson Hyperlegible"), sans-serif !important;
+  font-size: var(--kt-font-size, 24px);
+  line-height: var(--kt-line-height, 1.4);
+  font-weight: var(--kt-font-weight, 400);
+  letter-spacing: 0.01em;
+  font-feature-settings: var(--kt-font-features, normal);
+
+  color: var(--kt-color, #ffffff);
+  text-align: center;
+  background: rgba(0, 0, 0, var(--kt-bg-opacity, 0.45));
+  border-radius: 6px;
+  text-shadow: var(--kt-text-shadow, 0 1px 2px rgba(0, 0, 0, 0.9));
+
+  white-space: pre-wrap;
+  word-wrap: break-word;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  transition: opacity 80ms linear;
+  opacity: 1;
+
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#kt-overlay .kt-text {
+  opacity: var(--kt-text-opacity, 1);
+  width: 100%;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  text-align: inherit;
+  text-wrap: balance; /* 各行均匀，避免最后一行孤词 */
+}
+
+#kt-overlay[data-empty="1"] {
+  opacity: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+/* 单词：可命中，悬停高亮；整块/选中强调由 JS 切换 */
+.kt-word {
+  pointer-events: auto;
+  border-radius: 3px;
+  transition: background-color 80ms linear;
+}
+
+.kt-word:hover {
+  background-color: rgba(128, 128, 128, 0.55);
+}
+
+.kt-word-selected {
+  background-color: rgba(128, 128, 128, 0.55);
+}
+
+/* 当前选中词：高亮 + 加粗 + 放大（transform 不挤动排版） */
+.kt-word-active {
+  display: inline-block;
+  background-color: rgba(255, 214, 0, 0.9) !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+  transform: scale(1.16);
+  transform-origin: center bottom;
+  border-radius: 4px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  text-shadow: none !important;
+}
+
+/* 隐藏测量节点 */
+#kt-measurer {
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  transform: translateX(-50%);
+  width: min(var(--kt-text-width, 820px), calc(100% - 32px));
+  min-width: 0;
+  padding: 2px 8px;
+  z-index: -1;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--kt-font-family, "Atkinson Hyperlegible"), sans-serif !important;
+  font-size: var(--kt-font-size, 24px);
+  line-height: var(--kt-line-height, 1.4);
+  font-weight: var(--kt-font-weight, 400);
+  letter-spacing: 0.01em;
+  font-feature-settings: var(--kt-font-features, normal);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* ============ 翻译气泡 ============ */
+
+#kt-tooltip {
+  position: absolute;
+  z-index: 2147483000;
+  pointer-events: none;
+  box-sizing: border-box;
+  background-color: rgba(8, 8, 8, 0.85);
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: "Roboto", "Noto Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+  visibility: hidden;
+  text-align: left;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+#kt-tooltip.kt-visible {
+  visibility: visible;
+}
+
+#kt-tooltip .kt-tooltip-word {
+  font-size: 1.18em;
+  font-weight: 600;
+}
+
+#kt-tooltip .kt-tooltip-meta {
+  margin-top: 3px;
+  font-size: 0.82em;
+  opacity: 0.85;
+  white-space: pre-wrap;
+}
+
+#kt-tooltip .kt-tooltip-line-label {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 0.78em;
+  opacity: 0.75;
+}
+
+#kt-tooltip .kt-tooltip-line {
+  margin-top: 2px;
+  font-size: 0.98em;
+  line-height: 1.4;
+}
+
+#kt-tooltip .kt-loading {
+  opacity: 0.55;
+}
+
+#kt-tooltip .kt-tooltip-error {
+  color: #ffb4b4;
+}
+
+/* ============ 操作通知 ============ */
+
+#kt-notification {
+  position: absolute;
+  z-index: 2147483000;
+  pointer-events: none;
+  background-color: rgba(8, 8, 8, 0.78);
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: "Roboto", "Noto Sans", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 15px;
+  visibility: hidden;
+}
+
+#kt-notification.kt-visible {
+  visibility: visible;
+}
+
+/* 迷你播放器内不显示覆盖层 */
+.ytp-miniplayer #kt-overlay {
+  display: none;
+}
