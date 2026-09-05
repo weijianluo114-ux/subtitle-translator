@@ -39,6 +39,7 @@ const DEFAULT_SETTINGS = {
     backgroundColor: 'auto',
     backgroundOpacity: 'auto',
     characterEdgeStyle: 'auto',
+    textBold: false,
   },
   uiLang: 'zh_CN',
   debug: false,
@@ -102,6 +103,7 @@ const I18N = {
     widthCustom: '自定义',
     widthPercent: '自定义宽度（屏宽 %）',
     tooltipFollow: '跟随字幕样式',
+    ttBold: '气泡文字加粗',
     ttFontFamily: '气泡字体',
     ttFontSize: '气泡字号',
     ttFontColor: '气泡字色',
@@ -169,6 +171,7 @@ const I18N = {
     widthCustom: 'Custom',
     widthPercent: 'Custom width (% of player)',
     tooltipFollow: 'Follow subtitle style',
+    ttBold: 'Tooltip bold',
     ttFontFamily: 'Tooltip font',
     ttFontSize: 'Tooltip size',
     ttFontColor: 'Tooltip color',
@@ -239,8 +242,11 @@ function normalizeSettings(raw) {
   pick('sentenceTranslation', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('tooltipFollowSubtitle', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   if (src.tooltip && typeof src.tooltip === 'object') {
-    const tk = ['fontFamily','fontSize','fontColor','fontOpacity','backgroundColor','backgroundOpacity','characterEdgeStyle'];
-    for (const k of tk) if (typeof src.tooltip[k] === 'string') s.tooltip[k] = src.tooltip[k];
+    const tk = ['fontFamily','fontSize','fontColor','fontOpacity','backgroundColor','backgroundOpacity','characterEdgeStyle','textBold'];
+    for (const k of tk) {
+      const v = src.tooltip[k];
+      if (typeof v === 'string' || typeof v === 'boolean') s.tooltip[k] = v;
+    }
   }
   if (src.uiLang === 'en' || src.uiLang === 'zh_CN') s.uiLang = src.uiLang;
   pick('debug', [true, false], (v) => (typeof v === 'boolean' ? v : null));
@@ -289,6 +295,7 @@ function render() {
   $('width-custom-row').classList.toggle('kt-hidden', settings.captionWidth !== 'custom');
 
   $('tooltip-follow').checked = settings.tooltipFollowSubtitle;
+  $('tooltip-bold').checked = settings.tooltip.textBold;
   $('tooltip-custom').classList.toggle('kt-hidden', settings.tooltipFollowSubtitle);
   $('tooltip-font-family').value = settings.tooltip.fontFamily;
   $('tooltip-font-size').value = settings.tooltip.fontSize;
@@ -410,6 +417,9 @@ function bind() {
   bindCheck('tooltip-follow', () => {
     settings.tooltipFollowSubtitle = $('tooltip-follow').checked;
     render();
+  });
+  bindCheck('tooltip-bold', () => {
+    settings.tooltip.textBold = $('tooltip-bold').checked;
   });
   bindSel('tooltip-font-family', () => { settings.tooltip.fontFamily = $('tooltip-font-family').value; });
   bindSel('tooltip-font-size', () => { settings.tooltip.fontSize = $('tooltip-font-size').value; });

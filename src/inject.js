@@ -101,6 +101,7 @@
       backgroundColor: 'auto',
       backgroundOpacity: 'auto',
       characterEdgeStyle: 'auto',
+      textBold: false,
     },
     uiLang: 'zh_CN',
     debug: false,
@@ -211,7 +212,8 @@
     pick('tooltipFollowSubtitle', null, bool);
     if (src.tooltip && typeof src.tooltip === 'object') {
       for (const k of Object.keys(s.tooltip)) {
-        if (typeof src.tooltip[k] === 'string') s.tooltip[k] = src.tooltip[k];
+        const v = src.tooltip[k];
+        if (typeof v === 'string' || typeof v === 'boolean') s.tooltip[k] = v;
       }
     }
     if (src.uiLang === 'en' || src.uiLang === 'zh_CN') s.uiLang = src.uiLang;
@@ -279,6 +281,8 @@
     cacheDirty: { word: false, line: false },
     cacheTimer: null,
     dragState: null,
+    lastX: null,
+    lastY: null,
     debugLogs: [],
   };
   window.__ktState = STATE;
@@ -1439,6 +1443,17 @@
     const text = active ? active.text : '';
     if (!force && text === STATE.lastText) return;
 
+    const changed = text !== STATE.lastText;
+    if (changed) {
+      // 字幕块切换会整批替换词节点：指针下的旧 span 被移除时浏览器不触发
+      // pointerleave，必须主动清理，否则气泡/暂停状态会"卡"在页面上。
+      cancelHoverTimer();
+      abortActiveRequests();
+      STATE.hoverGen += 1;
+      clearSelection(false);
+      hideTooltip();
+    }
+
     if (STATE.overlayText) {
       STATE.overlayText.textContent = '';
       STATE.overlayText.appendChild(buildWordSpans(text));
@@ -1447,12 +1462,40 @@
     STATE.activeChunkText = text;
     STATE.activeChunkRaw = active ? active.rawText : '';
     STATE.overlay.dataset.empty = text ? '0' : '1';
+    checkPointerState();
     debugLog('render', { text: text.slice(0, 80), reason: active ? active.reason : 'none' });
+  }
+
+  /* ---- 指针看门狗：节点被替换/全屏切换等场景可能吞掉 pointerleave，
+         用最近一次指针坐标 + elementFromPoint 兜底校验 ---- */
+  function trackPointer(e) {
+    STATE.lastX = e.clientX;
+    STATE.lastY = e.clientY;
+  }
+
+  function pointerOnWord() {
+    if (STATE.lastX == null || STATE.lastY == null) return null; // 位置未知
+    const el = document.elementFromPoint(STATE.lastX, STATE.lastY);
+    return Boolean(
+      el && el.classList && el.classList.contains('kt-word') &&
+      STATE.overlay && STATE.overlay.contains(el)
+    );
+  }
+
+  function checkPointerState() {
+    if (pointerOnWord() !== false) return; // 在词上或位置未知 → 不动
+    const tooltipVisible = STATE.tooltip && STATE.tooltip.style.visibility === 'visible';
+    if (tooltipVisible || pauseController.claimedVideo) {
+      onSubtitleLeave();
+    }
   }
 
   function startPolling() {
     if (STATE.pollId) return;
-    STATE.pollId = setInterval(() => renderCurrentCaption(), CFG.pollMs);
+    STATE.pollId = setInterval(() => {
+      renderCurrentCaption();
+      checkPointerState();
+    }, CFG.pollMs);
   }
   function stopPolling() {
     if (STATE.pollId) clearInterval(STATE.pollId);
@@ -1617,6 +1660,7 @@
       box.style.fontFamily = subStyle.fontFamily || box.style.fontFamily;
       box.style.color = subStyle.color || '#fff';
       box.style.fontSize = subStyle.fontSize || '16px';
+      box.style.fontWeight = subStyle.fontWeight || '400';
       box.style.background = subStyle.backgroundImage && subStyle.backgroundImage !== 'none'
         ? subStyle.backgroundImage
         : 'rgba(8, 8, 8, 0.85)';
@@ -1666,6 +1710,7 @@
     const fontColor = tt.fontColor === 'auto' ? subColor : (TT_COLORS[tt.fontColor] || subColor);
     box.style.color = tt.fontOpacity === 'auto' ? fontColor : alpha(fontColor, TT_OPAC[tt.fontOpacity] != null ? TT_OPAC[tt.fontOpacity] : 1);
     box.style.fontSize = tt.fontSize === 'auto' ? subSize : (TT_SIZES[tt.fontSize] || subSize);
+    box.style.fontWeight = tt.textBold ? '700' : '400';
     box.style.background = tt.backgroundColor === 'auto' ? subBg : alpha(TT_COLORS[tt.backgroundColor] || subBg, TT_BG_OPAC[tt.backgroundOpacity] != null ? TT_BG_OPAC[tt.backgroundOpacity] : 1);
     box.style.textShadow = tt.characterEdgeStyle === 'auto' ? (sub ? sub.textShadow : 'none') : (TT_EDGES[tt.characterEdgeStyle] || 'none');
   }
@@ -2326,6 +2371,9 @@
   document.addEventListener('yt-navigate-finish', () => {
     setTimeout(checkNavigation, 0);
   }, true);
+
+  // 追踪指针位置：供"看门狗"在 pointerleave 被吞掉的场景兜底清理
+  document.addEventListener('pointermove', trackPointer, true);
 
   setInterval(handleUrlChange, 1000);
 
