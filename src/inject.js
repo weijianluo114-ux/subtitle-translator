@@ -356,81 +356,39 @@
     }
   }
 
-  /* ============================ 翻译引擎 ============================ */
+  /* ============================ 翻译引擎 ============================
+   * 翻译统一走"桥接 → 后台 service worker"代理：
+   *   - MAIN world 页面代码受 YouTube 页面 CSP 约束，直连翻译接口可能被拦；
+   *   - 后台具备 host_permissions（translate.googleapis.com / bing.com），无 CORS/CSP 限制；
+   *   - 请求与响应经 documentElement 自定义事件进出页面（与设置桥同一通道）。
+   */
 
-  const GOOGLE_CLIENT_IDS = ['dict-chrome-ex', 'at', 'gtx'];
-  let googleClientIdx = 0;
-
-  async function translateGoogle(text, sl, tl, signal) {
-    let lastErr = null;
-    for (let attempt = 0; attempt < GOOGLE_CLIENT_IDS.length; attempt++) {
-      const idx = (googleClientIdx + attempt) % GOOGLE_CLIENT_IDS.length;
-      try {
-        const params = new URLSearchParams([
-          ['client', GOOGLE_CLIENT_IDS[idx]],
-          ['q', text],
-          ['sl', sl || 'auto'],
-          ['tl', tl || 'en'],
-          ['hl', tl || 'en'],
-          ['dj', '1'],
-          ['dt', 't'],
-          ['dt', 'bd'],
-          ['dt', 'rm'],
-        ]);
-        const resp = await fetch('https://translate.googleapis.com/translate_a/single?' + params.toString(), { signal });
-        if (!resp.ok) {
-          const err = new Error('google-http-' + resp.status);
-          err.status = resp.status;
-          throw err;
-        }
-        const data = await resp.json();
-        if (!Array.isArray(data.sentences)) throw new Error('google-empty');
-        googleClientIdx = idx;
-        let translated = '';
-        let translit = '';
-        let srcTranslit = '';
-        for (const s of data.sentences) {
-          translated += s.trans || '';
-          translit += s.translit || '';
-          srcTranslit += s.src_translit || '';
-        }
-        let dict = '';
-        for (const d of data.dict || []) {
-          dict += (d.pos || '') + ': ' + (d.terms || []).join(', ') + ';\n';
-        }
-        return {
-          translatedText: translated,
-          detectedLanguageCode: data.src || '',
-          dictionary: dict,
-          transliteration: translit,
-          transcription: srcTranslit,
-        };
-      } catch (err) {
-        lastErr = err;
-        const status = err && err.status;
-        const refused = status === 403 || status === 429;
-        if (!refused) break; // 非限流错误，直接放弃
-        if (attempt === GOOGLE_CLIENT_IDS.length - 1) break;
-      }
-    }
-    throw lastErr || new Error('google-translate-failed');
-  }
-
-  function bingRequest(text, sl, tl, signal) {
-    return new Promise((resolve) => {
-      const id = 'b' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  function requestTranslationViaBridge(translatorKey, text, sl, tl, signal) {
+    return new Promise((resolve, reject) => {
+      const id = 't' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        document.documentElement.removeEventListener('kt-translate-response', onResp);
+        reject(new Error('translate-timeout'));
+      }, 15000);
       const onResp = (e) => {
         if (!e.detail || e.detail.id !== id) return;
-        document.documentElement.removeEventListener('kt-bing-response', onResp);
+        settled = true;
+        clearTimeout(timer);
+        document.documentElement.removeEventListener('kt-translate-response', onResp);
         resolve(e.detail);
       };
-      document.documentElement.addEventListener('kt-bing-response', onResp);
+      document.documentElement.addEventListener('kt-translate-response', onResp);
       if (signal) {
         signal.addEventListener('abort', () => {
-          document.documentElement.dispatchEvent(new CustomEvent('kt-bing-abort', { detail: { id } }));
+          document.documentElement.dispatchEvent(new CustomEvent('kt-translate-abort', { detail: { id } }));
         }, { once: true });
       }
-      document.documentElement.dispatchEvent(new CustomEvent('kt-bing-request', { detail: { id, text, sl, tl } }));
+      document.documentElement.dispatchEvent(new CustomEvent('kt-translate-request', {
+        detail: { id, translatorKey, text, sl, tl },
+      }));
     });
   }
 
@@ -438,20 +396,22 @@
     const raw = String(text || '').trim();
     if (!raw) return null;
     const limited = raw.length > CFG.maxTranslateChars ? raw.slice(0, CFG.maxTranslateChars) : raw;
-    const sl = STATE.settings.sourceLanguage;
-    const tl = STATE.settings.targetLanguage;
-    if (STATE.settings.translator === 'bing') {
-      const r = await bingRequest(limited, sl, tl, signal);
-      if (!r || !r.ok) throw new Error((r && r.error) || 'bing-failed');
-      return {
-        translatedText: r.translatedText,
-        detectedLanguageCode: r.detectedLanguageCode || '',
-        dictionary: '',
-        transliteration: '',
-        transcription: '',
-      };
-    }
-    return translateGoogle(limited, sl, tl, signal);
+    const translatorKey = STATE.settings.translator === 'bing' ? 'bing' : 'google';
+    const r = await requestTranslationViaBridge(
+      translatorKey,
+      limited,
+      STATE.settings.sourceLanguage,
+      STATE.settings.targetLanguage,
+      signal
+    );
+    if (!r || !r.ok) throw new Error((r && r.error) || 'translate-failed');
+    return {
+      translatedText: r.translatedText || '',
+      detectedLanguageCode: r.detectedLanguageCode || '',
+      dictionary: r.dictionary || '',
+      transliteration: r.transliteration || '',
+      transcription: r.transcription || '',
+    };
   }
 
   /* ============================ 翻译缓存（词 + 整行两级 LRU） ============================ */
@@ -1733,11 +1693,16 @@
     } else {
       box.style.top = Math.max(vr.top + window.scrollY, or.top - th - CFG.tooltipGap + window.scrollY) + 'px';
     }
+    /* 关键：用内联样式显式置为可见（内联优先级高于 class，反过来写会永远不可见） */
+    box.style.visibility = 'visible';
     box.classList.add('kt-visible');
   }
 
   function hideTooltip() {
-    if (STATE.tooltip) STATE.tooltip.classList.remove('kt-visible');
+    if (STATE.tooltip) {
+      STATE.tooltip.style.visibility = 'hidden';
+      STATE.tooltip.classList.remove('kt-visible');
+    }
   }
 
   function scheduleTooltip() {
@@ -1770,8 +1735,13 @@
     setTooltipSection('meta', '');
     setTooltipSection('line-label', lineText ? t('lineLabel') : '');
     setTooltipSection('line', lineText ? t('loading') : '');
-    styleTooltip();
-    positionTooltip();
+    try {
+      styleTooltip();
+      positionTooltip();
+    } catch (err) {
+      warn('tooltip 渲染失败:', err);
+      showNotification(t('translationFailed'), true);
+    }
 
     const wordPromise = translateCached('word', selText, controller.signal);
     STATE.activeTranslation = { text: selText, promise: wordPromise };

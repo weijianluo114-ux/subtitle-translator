@@ -4,7 +4,7 @@
  * 本脚本在隔离世界运行，负责三件事：
  *   1. 把 chrome.storage.local 里的设置同步进页面（dataset + CustomEvent）
  *   2. 把页面产生的翻译缓存批量写回 storage.local
- *   3. 把 Bing 翻译请求转发给 background service worker（Bing 无 CORS 头，必须后台代发）
+ *   3. 把 Google/Bing 翻译请求转发给 background service worker（绕开页面 CSP 限制）
  */
 (() => {
   'use strict';
@@ -55,33 +55,37 @@
     chrome.storage.local.set({ [key]: detail.data.slice(-MAX_CACHE_ENTRIES) }, () => void chrome.runtime.lastError);
   });
 
-  // 页面 → 后台：Bing 翻译
-  document.documentElement.addEventListener('kt-bing-request', (e) => {
+  // 页面 → 后台：翻译代理（Google/Bing 统一走这里；
+  // MAIN world 页面代码受页面 CSP 约束，直连翻译接口可能被拦）
+  document.documentElement.addEventListener('kt-translate-request', (e) => {
     const detail = (e && e.detail) || {};
     if (!detail.id || !detail.text) return;
     chrome.runtime.sendMessage(
       {
         action: 'translate',
         requestId: detail.id,
-        translatorKey: 'bing',
+        translatorKey: detail.translatorKey || 'google',
         text: detail.text,
         sourceLanguageCode: detail.sl || 'auto',
         targetLanguageCode: detail.tl || 'en',
       },
       (resp) => {
         const err = chrome.runtime.lastError;
-        post('kt-bing-response', {
+        post('kt-translate-response', {
           id: detail.id,
           ok: !err && resp && !resp.error,
           translatedText: resp && resp.translatedText,
           detectedLanguageCode: resp && resp.detectedLanguageCode,
+          dictionary: resp && resp.dictionary,
+          transliteration: resp && resp.transliteration,
+          transcription: resp && resp.transcription,
           error: (err && err.message) || (resp && resp.error) || null,
         });
       }
     );
   });
 
-  document.documentElement.addEventListener('kt-bing-abort', (e) => {
+  document.documentElement.addEventListener('kt-translate-abort', (e) => {
     const id = e && e.detail && e.detail.id;
     if (!id) return;
     chrome.runtime.sendMessage({ action: 'abortTranslate', requestId: id }, () => void chrome.runtime.lastError);

@@ -142,22 +142,90 @@ class BingTranslator {
   }
 }
 
+/* Google 翻译（免费公开端点，多客户端 ID 轮换应对 403/429 限流） */
+class GoogleTranslator {
+  constructor() {
+    this.apiUrl = 'https://translate.googleapis.com/translate_a/single';
+    this.clientIds = ['dict-chrome-ex', 'at', 'gtx'];
+    this.clientIdx = 0;
+  }
+
+  async translate(text, sl, tl, signal) {
+    let lastErr = null;
+    for (let attempt = 0; attempt < this.clientIds.length; attempt++) {
+      const idx = (this.clientIdx + attempt) % this.clientIds.length;
+      try {
+        const params = new URLSearchParams([
+          ['client', this.clientIds[idx]],
+          ['q', text],
+          ['sl', sl || 'auto'],
+          ['tl', tl || 'en'],
+          ['hl', tl || 'en'],
+          ['dj', '1'],
+          ['dt', 't'],
+          ['dt', 'bd'],
+          ['dt', 'rm'],
+        ]);
+        const resp = await fetch(this.apiUrl + '?' + params.toString(), { signal });
+        if (!resp.ok) {
+          const err = new Error('google-http-' + resp.status);
+          err.status = resp.status;
+          throw err;
+        }
+        const data = await resp.json();
+        if (!Array.isArray(data.sentences)) throw new Error('google-empty');
+        this.clientIdx = idx;
+        let translated = '';
+        let translit = '';
+        let srcTranslit = '';
+        for (const s of data.sentences) {
+          translated += s.trans || '';
+          translit += s.translit || '';
+          srcTranslit += s.src_translit || '';
+        }
+        let dict = '';
+        for (const d of data.dict || []) {
+          dict += (d.pos || '') + ': ' + (d.terms || []).join(', ') + ';\n';
+        }
+        return {
+          translatedText: translated,
+          detectedLanguageCode: data.src || '',
+          dictionary: dict,
+          transliteration: translit,
+          transcription: srcTranslit,
+        };
+      } catch (err) {
+        lastErr = err;
+        const refused = err && (err.status === 403 || err.status === 429);
+        if (!refused || attempt === this.clientIds.length - 1) break;
+      }
+    }
+    throw lastErr || new Error('google-translate-failed');
+  }
+}
+
 const bing = new BingTranslator();
+const google = new GoogleTranslator();
 const activeRequests = new Map();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false;
 
   if (message.action === 'translate') {
-    if (message.translatorKey !== 'bing') {
-      sendResponse({ error: 'unsupported translator' });
-      return false;
-    }
+    const translator = message.translatorKey === 'bing' ? bing : google;
     const controller = new AbortController();
     activeRequests.set(message.requestId, controller);
-    bing
+    translator
       .translate(message.text, message.sourceLanguageCode, message.targetLanguageCode, controller.signal)
-      .then((r) => sendResponse({ translatedText: r.translatedText, detectedLanguageCode: r.detectedLanguageCode }))
+      .then((r) =>
+        sendResponse({
+          translatedText: r.translatedText,
+          detectedLanguageCode: r.detectedLanguageCode,
+          dictionary: r.dictionary,
+          transliteration: r.transliteration,
+          transcription: r.transcription,
+        })
+      )
       .catch((err) => sendResponse({ error: String((err && err.message) || err) }))
       .finally(() => activeRequests.delete(message.requestId));
     return true; // 异步响应
