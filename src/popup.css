@@ -12,7 +12,7 @@ html, body {
   background: #f6f7fb;
 }
 
-body { display: flex; flex-direction: column; min-height: 480px; max-height: 560px; }
+body { display: flex; flex-direction: column; min-height: 480px; max-height: 560px; position: relative; }
 
 /* ---- 头部 ---- */
 .kt-header {
@@ -48,6 +48,44 @@ body { display: flex; flex-direction: column; min-height: 480px; max-height: 560
   color: #333;
   outline: none;
 }
+
+/* ---- 右上角打赏小栏目（Buy me a coffee） ---- */
+.kt-donate-btn {
+  border: none;
+  background: none;
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.kt-donate-panel {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  width: 254px;
+  background: #ffffff;
+  border: 1px solid #e7e9f0;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  padding: 10px;
+  z-index: 50;
+}
+
+.kt-donate-title { font-size: 13px; font-weight: 700; }
+.kt-donate-title span { color: #b45309; }
+
+.kt-donate-sub { font-size: 11.5px; color: #8a8f9e; margin-top: 2px; }
+
+.kt-donate-imgs { display: flex; gap: 8px; margin-top: 8px; }
+.kt-donate-imgs figure { margin: 0; flex: 1; text-align: center; }
+.kt-donate-imgs img {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid #eceef4;
+  display: block;
+}
+.kt-donate-imgs figcaption { font-size: 11px; color: #666; margin-top: 4px; }
 
 /* ---- 标签页 ---- */
 .kt-tabs {

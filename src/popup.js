@@ -113,6 +113,7 @@ const I18N = {
     ttEdge: '气泡字符边缘',
     resetAppearance: '重置外观',
     langTip: '界面语言 / UI language',
+    donateSub: '扫码请我喝杯咖啡，支持学费',
   },
   en: {
     appTitle: 'Subtitle Line Translator',
@@ -181,6 +182,7 @@ const I18N = {
     ttEdge: 'Tooltip edge style',
     resetAppearance: 'Reset appearance',
     langTip: 'UI language',
+    donateSub: 'Scan to buy me a coffee — supports my school fees',
   },
 };
 
@@ -449,6 +451,19 @@ function bind() {
     for (const k of SETTINGS_SCOPE) settings[k] = DEFAULT_SETTINGS[k];
     render();
     save();
+  });
+
+  /* 右上角打赏小栏目：点击 ☕ 展开/收起，点击面板外关闭 */
+  const donateBtn = $('donate-btn');
+  const donatePanel = $('donate-panel');
+  donateBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    donatePanel.classList.toggle('kt-hidden');
+  });
+  document.addEventListener('click', (e) => {
+    if (!donatePanel.classList.contains('kt-hidden') && !donatePanel.contains(e.target) && e.target !== donateBtn) {
+      donatePanel.classList.add('kt-hidden');
+    }
   });
 
   $('debug-download').addEventListener('click', async () => {

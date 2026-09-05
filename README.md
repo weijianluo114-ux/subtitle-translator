@@ -50,3 +50,11 @@ python3 build.py
 
 本项目以 [MIT License](LICENSE) 开源。内置字体为 OFL 许可、`languages.json` 来自 MIT 许可的 hover-translate 仓库，详见 `src/THIRD_PARTY_NOTICES.md`。代码为独立实现，仅参考 hover-translate（MIT）与 ketuvia（AGPL-3.0）的算法思路。
 
+## ☕ 支持我 / Buy me a coffee (for school fee)
+
+扫码请我喝杯咖啡，支持学费：
+
+| 微信 WeChat | 支付宝 Alipay |
+| --- | --- |
+| ![WeChat Pay QR](src/assets/wechat.png) | ![Alipay QR](src/assets/alipay.jpg) |
+

@@ -9,11 +9,27 @@
   <header class="kt-header">
     <div class="kt-logo">译</div>
     <div class="kt-title" data-i18n="appTitle">字幕整行翻译</div>
+    <button id="donate-btn" class="kt-donate-btn" title="Buy me a coffee (for school fee)">☕</button>
     <select id="lang-select" class="kt-lang-select" title="界面语言 / UI language">
       <option value="zh_CN">中文</option>
       <option value="en">English</option>
     </select>
   </header>
+
+  <div id="donate-panel" class="kt-donate-panel kt-hidden">
+    <div class="kt-donate-title">Buy me a coffee <span>(for school fee)</span></div>
+    <div class="kt-donate-sub" data-i18n="donateSub">扫码请我喝杯咖啡，支持学费</div>
+    <div class="kt-donate-imgs">
+      <figure>
+        <img src="assets/wechat.png" alt="WeChat Pay QR code">
+        <figcaption>微信 WeChat</figcaption>
+      </figure>
+      <figure>
+        <img src="assets/alipay.jpg" alt="Alipay QR code">
+        <figcaption>支付宝 Alipay</figcaption>
+      </figure>
+    </div>
+  </div>
 
   <nav class="kt-tabs">
     <button class="kt-tab active" data-tab="settings" data-i18n="tabSettings">设置</button>

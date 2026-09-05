@@ -12,3 +12,6 @@ node_modules/
 # Chrome 打包产物（.pem 是扩展私钥，严禁入库/外传）
 *.crx
 *.pem
+
+# 本地原始收款码目录（发布版本在 src/assets/，随仓库公开）
+assets/
