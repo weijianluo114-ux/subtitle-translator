@@ -92,6 +92,7 @@
     alwaysMultipleSelection: false,
     showNotifications: true,
     sentenceTranslation: true,
+    translationEnabled: true,
     tooltipFollowSubtitle: true,
     tooltip: {
       fontFamily: 'auto',
@@ -209,6 +210,7 @@
     pick('alwaysMultipleSelection', null, bool);
     pick('showNotifications', null, bool);
     pick('sentenceTranslation', null, bool);
+    pick('translationEnabled', null, bool);
     pick('tooltipFollowSubtitle', null, bool);
     if (src.tooltip && typeof src.tooltip === 'object') {
       for (const k of Object.keys(s.tooltip)) {
@@ -283,6 +285,7 @@
     dragState: null,
     lastX: null,
     lastY: null,
+    shiftHeld: false,
     debugLogs: [],
     lastDebugSyncAt: 0,
   };
@@ -338,6 +341,17 @@
     const prev = STATE.settings;
     STATE.settings = normalizeSettings(next);
     window.__ktSettings = { ...STATE.settings };
+
+    syncTranslationUi();
+    if (!STATE.settings.translationEnabled) {
+      // 翻译总开关关闭：清理一切悬停状态，只保留整行字幕显示
+      cancelHoverTimer();
+      abortActiveRequests();
+      STATE.hoverGen += 1;
+      clearSelection(false);
+      hideTooltip();
+      pauseController.resume();
+    }
 
     const rebuildKeys = ['targetLines', 'textSize', 'font', 'allCaps', 'textBold', 'captionWidth', 'widthPercent'];
     const needsRebuild = rebuildKeys.some((k) => prev[k] !== STATE.settings[k]);
@@ -1350,6 +1364,10 @@
     node.style.transform = pos.x === 'center' ? 'translate(-50%, -50%)' : 'translateY(-50%)';
   }
 
+  function syncTranslationUi() {
+    if (STATE.overlay) STATE.overlay.dataset.translationOff = STATE.settings.translationEnabled ? '0' : '1';
+  }
+
   function mountOverlay(opts) {
     const o = opts || {};
     if (STATE.settings.enabled && !document.head.contains(captionHideStyle)) {
@@ -1376,6 +1394,7 @@
       player.appendChild(box);
       STATE.overlay = box;
       STATE.overlayText = text;
+      syncTranslationUi();
       box.addEventListener('pointerover', onOverlayPointerOver);
       box.addEventListener('pointerout', onOverlayPointerOut);
     }
@@ -1503,17 +1522,30 @@
     STATE.lastY = e.clientY;
   }
 
-  function pointerOnWord() {
+  function elementFromPointOnWord() {
     if (STATE.lastX == null || STATE.lastY == null) return null; // 位置未知
     const el = document.elementFromPoint(STATE.lastX, STATE.lastY);
-    return Boolean(
-      el && el.classList && el.classList.contains('kt-word') &&
-      STATE.overlay && STATE.overlay.contains(el)
-    );
+    return (el && el.classList && el.classList.contains('kt-word') && STATE.overlay && STATE.overlay.contains(el))
+      ? el
+      : null;
+  }
+
+  function extendSelectionToElement(el) {
+    if (!STATE.settings.translationEnabled) return;
+    if (!el || !el.classList || !el.classList.contains('kt-word')) return;
+    if (!STATE.selectedWords.has(el)) updateSelection(el);
+    applyActiveWord(el);
+    scheduleTooltip();
   }
 
   function checkPointerState() {
-    if (pointerOnWord() !== false) return; // 在词上或位置未知 → 不动
+    const el = elementFromPointOnWord();
+    if (el) {
+      // Shift 拖选：指针扫过的每个词都并入选区（快速拖动也不漏词）
+      if (STATE.shiftHeld) extendSelectionToElement(el);
+      return;
+    }
+    if (STATE.lastX == null || STATE.lastY == null) return; // 位置未知
     const tooltipVisible = STATE.tooltip && STATE.tooltip.style.visibility === 'visible';
     if (tooltipVisible || pauseController.claimedVideo) {
       onSubtitleLeave();
@@ -1610,8 +1642,9 @@
   }
 
   function handleWordEnter(e) {
+    if (!STATE.settings.translationEnabled) return;
     const target = e.currentTarget;
-    const extend = e.shiftKey || STATE.settings.alwaysMultipleSelection;
+    const extend = e.shiftKey || STATE.shiftHeld || STATE.settings.alwaysMultipleSelection;
     if (!extend) clearSelection(true);
     updateSelection(target);
     applyActiveWord(target);
@@ -1781,6 +1814,7 @@
   }
 
   function scheduleTooltip() {
+    if (!STATE.settings.translationEnabled) return;
     cancelHoverTimer();
     const selText = getSelectedText();
     if (!selText) return;
@@ -1860,10 +1894,13 @@
   /* ---- 点击动作（复制译文/原文/无动作） ---- */
 
   function handleWordDown(e) {
+    if (!STATE.settings.translationEnabled) return;
+    if (e.shiftKey) e.preventDefault(); // 阻止 Shift 拖选时的原生文本选中
     STATE.dragState = { x: e.clientX, y: e.clientY, dragging: false };
   }
 
   function handleWordMove(e) {
+    if (!STATE.settings.translationEnabled) return;
     if (!STATE.dragState || STATE.dragState.dragging) return;
     const dx = Math.abs(e.clientX - STATE.dragState.x);
     const dy = Math.abs(e.clientY - STATE.dragState.y);
@@ -1904,6 +1941,7 @@
   }
 
   function handleWordUp() {
+    if (!STATE.settings.translationEnabled) return;
     if (STATE.dragState && STATE.dragState.dragging) return;
     const action = STATE.settings.leftClickAction;
     if (action === 'nothing') return;
@@ -1954,7 +1992,7 @@
     claimedVideo: null,
     onExternalPlay: null,
     pause() {
-      if (!STATE.settings.autoPause) return;
+      if (!STATE.settings.translationEnabled || !STATE.settings.autoPause) return;
       const video = findVideo();
       if (!video || video.paused) return;
       video.pause();
@@ -2398,6 +2436,10 @@
 
   // 追踪指针位置：供"看门狗"在 pointerleave 被吞掉的场景兜底清理
   document.addEventListener('pointermove', trackPointer, true);
+
+  // 追踪 Shift 状态：供"按住 Shift 拖选多词"使用
+  document.addEventListener('keydown', (e) => { if (e.key === 'Shift') STATE.shiftHeld = true; }, true);
+  document.addEventListener('keyup', (e) => { if (e.key === 'Shift') STATE.shiftHeld = false; }, true);
 
   setInterval(handleUrlChange, 1000);
 

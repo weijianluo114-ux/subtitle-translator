@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
   alwaysMultipleSelection: false,
   showNotifications: true,
   sentenceTranslation: true,
+  translationEnabled: true,
   tooltipFollowSubtitle: true,
   tooltip: {
     fontFamily: 'auto',
@@ -61,6 +62,7 @@ const I18N = {
     targetLanguage: '目标语言',
     autoDetect: '自动检测',
     sentenceTranslation: '整句翻译（悬停时显示整行译文）',
+    translationEnabled: '启用翻译功能（悬停/整句/暂停/复制）',
     autoPause: '悬停时自动暂停视频',
     leftClickAction: '左键点击单词',
     copyTranslation: '复制译文',
@@ -130,6 +132,7 @@ const I18N = {
     targetLanguage: 'To',
     autoDetect: 'Auto detect',
     sentenceTranslation: 'Whole-line translation on hover',
+    translationEnabled: 'Enable translation (hover/line/pause/copy)',
     autoPause: 'Auto-pause video on hover',
     leftClickAction: 'Left click on word',
     copyTranslation: 'Copy translation',
@@ -242,6 +245,7 @@ function normalizeSettings(raw) {
   pick('alwaysMultipleSelection', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('showNotifications', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('sentenceTranslation', [true, false], (v) => (typeof v === 'boolean' ? v : null));
+  pick('translationEnabled', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('tooltipFollowSubtitle', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   if (src.tooltip && typeof src.tooltip === 'object') {
     const tk = ['fontFamily','fontSize','fontColor','fontOpacity','backgroundColor','backgroundOpacity','characterEdgeStyle','textBold'];
@@ -265,6 +269,7 @@ function render() {
   $('source-language').value = settings.sourceLanguage;
   $('target-language').value = settings.targetLanguage;
   $('sentence-translation').checked = settings.sentenceTranslation;
+  $('translation-enabled').checked = settings.translationEnabled;
   $('auto-pause').checked = settings.autoPause;
   $('left-click-action').value = settings.leftClickAction;
   $('always-multiple').checked = settings.alwaysMultipleSelection;
@@ -369,6 +374,7 @@ function bind() {
   bindSel('source-language', () => { settings.sourceLanguage = $('source-language').value; });
   bindSel('target-language', () => { settings.targetLanguage = $('target-language').value; });
   bindCheck('sentence-translation', () => { settings.sentenceTranslation = $('sentence-translation').checked; });
+  bindCheck('translation-enabled', () => { settings.translationEnabled = $('translation-enabled').checked; });
   bindCheck('auto-pause', () => { settings.autoPause = $('auto-pause').checked; });
   bindSel('left-click-action', () => { settings.leftClickAction = $('left-click-action').value; });
   bindCheck('always-multiple', () => { settings.alwaysMultipleSelection = $('always-multiple').checked; });
@@ -446,7 +452,7 @@ function bind() {
     });
   });
 
-  const SETTINGS_SCOPE = ['translator','sourceLanguage','targetLanguage','sentenceTranslation','autoPause','leftClickAction','alwaysMultipleSelection','showNotifications','debug'];
+  const SETTINGS_SCOPE = ['translator','sourceLanguage','targetLanguage','sentenceTranslation','translationEnabled','autoPause','leftClickAction','alwaysMultipleSelection','showNotifications','debug'];
   $('reset-settings').addEventListener('click', () => {
     for (const k of SETTINGS_SCOPE) settings[k] = DEFAULT_SETTINGS[k];
     render();

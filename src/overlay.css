@@ -79,6 +79,7 @@
   padding: 2px 8px;
   z-index: 60;
   pointer-events: none; /* 容器不挡操作，只有里面的单词可命中 */
+  user-select: none;
 
   font-family: var(--kt-font-family, "Atkinson Hyperlegible"), sans-serif !important;
   font-size: var(--kt-font-size, 24px);
@@ -125,7 +126,13 @@
 /* 单词：可命中；悬停/选中/当前词均为"贴合字形的发光"（无背景框） */
 .kt-word {
   pointer-events: auto;
+  user-select: none;
   transition: text-shadow 80ms linear;
+}
+
+/* 翻译总开关关闭：词不再响应任何指针事件（不悬停、不暂停、不高亮、不复制） */
+#kt-overlay[data-translation-off="1"] .kt-word {
+  pointer-events: none;
 }
 
 .kt-word:hover {
