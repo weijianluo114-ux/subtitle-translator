@@ -4,7 +4,7 @@
 
 A lightweight Chrome extension that turns YouTube subtitles into readable **full-line captions**, and lets you **hover any word to translate it instantly** (plus the whole current line), with the video auto-paused while you read.
 
-**Status**: v0.1.17. Source code lives in `src/` (load unpacked to test). Store listing materials are in `store-listing/`. See `docs/10-功能更新与商店上架流程.md` for the update/publish runbook (Chinese).
+**Status**: v0.1.17. Source code lives in `src/` (load unpacked to test). See `docs/10-功能更新与商店上架流程.md` for the update/publish runbook (Chinese).
 
 ## Features
 
@@ -25,7 +25,6 @@ A lightweight Chrome extension that turns YouTube subtitles into readable **full
 | `docs/` | Full documentation set (Markdown, feature checklists) |
 | `src/` | **Extension source (load this folder unpacked)** |
 | `tests/` | Core-algorithm regression tests (Node) |
-| `store-listing/` | Store copy / permission justifications / asset checklist |
 | `tools/make_icons.py` | Icon generator script |
 | `build.py` | Packaging script → `dist/*.zip` (for store upload) |
 | `LICENSE` | MIT license |
