@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "short_name": "SubtitleTranslator",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "__MSG_extDesc__",
   "default_locale": "zh_CN",
   "minimum_chrome_version": "88",
@@ -11,7 +11,9 @@
     "*://www.youtube.com/*",
     "*://m.youtube.com/*",
     "https://translate.googleapis.com/*",
-    "https://www.bing.com/*"
+    "https://translate.google.com/*",
+    "https://www.bing.com/*",
+    "https://api.mymemory.translated.net/*"
   ],
   "background": {
     "service_worker": "background.js"

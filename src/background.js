@@ -209,9 +209,38 @@ class GoogleTranslator {
   }
 }
 
+/* MyMemory 免费翻译（无需 key，国内通常可达，作为最后兜底） */
+class MyMemoryTranslator {
+  async translate(text, sl, tl, signal) {
+    const src = sl && sl !== 'auto' ? String(sl).split('-')[0] : 'autodetect';
+    const tgt = tl || 'zh-CN';
+    const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) +
+      '&langpair=' + encodeURIComponent(src + '|' + tgt);
+    const resp = await fetch(url, { signal });
+    if (!resp.ok) {
+      const err = new Error('mymemory-http-' + resp.status);
+      err.status = resp.status;
+      throw err;
+    }
+    const data = await resp.json();
+    const translated = data && data.responseData && data.responseData.translatedText;
+    if (!translated) throw new Error('mymemory-empty');
+    return {
+      translatedText: translated,
+      detectedLanguageCode: (data.responseData && data.responseData.detectedLanguage) ||
+        (data.matches && data.matches[0] && data.matches[0].source) || '',
+      dictionary: '',
+      transliteration: '',
+      transcription: '',
+    };
+  }
+}
+
 const bing = new BingTranslator();
 const google = new GoogleTranslator();
+const mymemory = new MyMemoryTranslator();
 const activeRequests = new Map();
+let lastGoodEngine = null; // 记住上次成功的引擎，下次优先走它，避免每次都白试
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false;
@@ -219,40 +248,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'translate') {
     const controller = new AbortController();
     activeRequests.set(message.requestId, controller);
-    const primary = message.translatorKey === 'bing' ? bing : google;
-    const fallback = message.translatorKey === 'bing' ? google : bing;
+    const all = { google, bing, mymemory };
+    const primaryKey = message.translatorKey === 'bing' ? 'bing' : 'google';
+    // 引擎顺序：上次成功的引擎 > 用户首选 > 其他（google → bing → mymemory）
+    const order = [lastGoodEngine, primaryKey, 'google', 'bing', 'mymemory']
+      .filter((k, i, arr) => k && all[k] && arr.indexOf(k) === i);
 
     (async () => {
-      try {
-        const r = await primary.translate(message.text, message.sourceLanguageCode, message.targetLanguageCode, controller.signal);
-        sendResponse({
-          translatedText: r.translatedText,
-          detectedLanguageCode: r.detectedLanguageCode,
-          dictionary: r.dictionary,
-          transliteration: r.transliteration,
-          transcription: r.transcription,
-        });
-      } catch (err1) {
-        // 首选引擎失败（网络不可达/限流）→ 自动兜底到另一引擎
+      const errors = [];
+      for (const key of order) {
         try {
-          const r2 = await fallback.translate(message.text, message.sourceLanguageCode, message.targetLanguageCode, controller.signal);
+          const r = await all[key].translate(message.text, message.sourceLanguageCode, message.targetLanguageCode, controller.signal);
+          lastGoodEngine = key;
           sendResponse({
-            translatedText: r2.translatedText,
-            detectedLanguageCode: r2.detectedLanguageCode,
-            dictionary: r2.dictionary,
-            transliteration: r2.transliteration,
-            transcription: r2.transcription,
-            fallback: true,
+            translatedText: r.translatedText,
+            detectedLanguageCode: r.detectedLanguageCode,
+            dictionary: r.dictionary,
+            transliteration: r.transliteration,
+            transcription: r.transcription,
+            engine: key,
           });
-        } catch (err2) {
-          sendResponse({
-            error: String((err1 && err1.message) || err1) + ' | ' + String((err2 && err2.message) || err2),
-          });
+          return;
+        } catch (err) {
+          errors.push(key + ': ' + String((err && err.message) || err));
+          if (controller.signal.aborted) break;
         }
-      } finally {
-        activeRequests.delete(message.requestId);
       }
-    })();
+      sendResponse({ error: errors.join(' | ') });
+    })().finally(() => activeRequests.delete(message.requestId));
+
     return true; // 异步响应
   }
 
