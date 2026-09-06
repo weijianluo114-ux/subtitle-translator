@@ -18,3 +18,6 @@ node_modules/
 
 # 商店截图存放目录（本地使用，不入库）
 /screenshots/
+
+# 日志目录（本地使用，不入库）
+/log/
