@@ -38,15 +38,9 @@ draw.rounded_rectangle([104, 176, 408, 388], radius=64, fill=(*DARK, 255))
 draw.rounded_rectangle([354, 72, 386, 176], radius=16, fill=(*DARK, 255))
 draw.ellipse([350, 46, 390, 86], fill=(*DARK, 255))
 
-for gx in (124, 150, 176):
-    for gy in (212, 240):
-        draw.ellipse([gx - 8, gy - 8, gx + 8, gy + 8], fill=(*LIGHT, 255))
-
 draw.rounded_rectangle([268, 200, 396, 246], radius=18, fill=(*YELLOW, 255))
-draw.ellipse([326, 314, 354, 342], fill=(*YELLOW, 255))
-
-font_fu = ImageFont.truetype('/mnt/c/Windows/Fonts/msyhbd.ttc', 108, index=0)
-draw.text((222, 288), '浮', font=font_fu, fill=(*YELLOW, 255), anchor='mm')
+font_fu = ImageFont.truetype('/mnt/c/Windows/Fonts/msyhbd.ttc', 152, index=0)
+draw.text((188, 282), '浮', font=font_fu, fill=(*YELLOW, 255), anchor='mm')
 
 badge.save('log/icon-preview-512.png')
 for size in (128, 48, 32, 16):
