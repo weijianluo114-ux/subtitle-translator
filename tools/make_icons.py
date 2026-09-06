@@ -38,7 +38,7 @@ draw.rounded_rectangle([104, 176, 408, 388], radius=64, fill=(*DARK, 255))
 draw.rounded_rectangle([354, 72, 386, 176], radius=16, fill=(*DARK, 255))
 draw.ellipse([350, 46, 390, 86], fill=(*DARK, 255))
 
-draw.rounded_rectangle([268, 200, 396, 246], radius=18, fill=(*YELLOW, 255))
+draw.rounded_rectangle([140, 126, 280, 168], radius=18, fill=(*YELLOW, 255))
 font_fu = ImageFont.truetype('/mnt/c/Windows/Fonts/msyhbd.ttc', 152, index=0)
 draw.text((188, 282), '浮', font=font_fu, fill=(*YELLOW, 255), anchor='mm')
 
