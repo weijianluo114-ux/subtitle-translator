@@ -476,6 +476,7 @@
     if (translatorKey === 'google') {
       const direct = await requestGoogleDirect(limited, STATE.settings.sourceLanguage, STATE.settings.targetLanguage);
       if (direct && direct.ok && direct.translatedText) {
+        debugLog('translate_ok', { path: 'direct', engine: 'google', text: limited.slice(0, 40) });
         return {
           translatedText: direct.translatedText,
           detectedLanguageCode: direct.detectedLanguageCode || '',
@@ -495,6 +496,7 @@
       signal
     );
     if (!r || !r.ok) throw new Error((r && r.error) || 'translate-failed');
+    debugLog('translate_ok', { path: 'bridge', engine: r.engine || translatorKey, text: limited.slice(0, 40) });
     return {
       translatedText: r.translatedText || '',
       detectedLanguageCode: r.detectedLanguageCode || '',

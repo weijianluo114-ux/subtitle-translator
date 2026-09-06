@@ -79,6 +79,7 @@
           dictionary: resp && resp.dictionary,
           transliteration: resp && resp.transliteration,
           transcription: resp && resp.transcription,
+          engine: resp && resp.engine,
           error: (err && err.message) || (resp && resp.error) || null,
         });
       }
