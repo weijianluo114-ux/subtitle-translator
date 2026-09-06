@@ -24,3 +24,6 @@ node_modules/
 
 # 商店上架内部资料（本地使用，不公开）
 /store-listing/
+
+# 内部技术文档（本地使用，不公开）
+/docs/
