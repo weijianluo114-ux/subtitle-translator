@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""扩展图标 v5：黄绿渐变徽章（外框）+ 黑色机身包住「横线在上、浮字在下」的整体 + 右侧天线。
-横线左边界 = 浮字正中心偏左一点；横线右边界 = 浮字右边界 + 浮宽/3。
+"""扩展图标 v6：黄绿渐变徽章（外框）+ 黑色机身包住「横线在上、浮字在下」+ 右侧天线。
+整体按组合图形边界在徽章内自动居中，比例微调以保证美观。
 """
 from PIL import Image, ImageDraw, ImageFont
 
@@ -30,9 +30,9 @@ badge.paste(grad, (0, 0), mask)
 draw = ImageDraw.Draw(badge)
 draw.rounded_rectangle([20, 20, 492, 492], radius=112, outline=(*BORDER, 255), width=14)
 
-# 「浮」尺寸与位置（锚点即字中心）
-font_fu = ImageFont.truetype('/mnt/c/Windows/Fonts/msyhbd.ttc', 152, index=0)
-fu_cx, fu_cy = 200, 300
+# 先以临时锚点计算「浮」几何
+font_fu = ImageFont.truetype('/mnt/c/Windows/Fonts/msyhbd.ttc', 144, index=0)
+fu_cx, fu_cy = 200, 296
 bb = draw.textbbox((0, 0), '浮', font=font_fu, anchor='mm')
 fu_left = fu_cx + bb[0]
 fu_top = fu_cy + bb[1]
@@ -40,32 +40,52 @@ fu_right = fu_cx + bb[2]
 fu_bottom = fu_cy + bb[3]
 fu_w = fu_right - fu_left
 
-# 黄色横线：位于浮字上方；左边界=浮中心偏左一点；右边界=浮右边界 + 浮宽/3
-bar_h = 44
-bar_gap = 20
-bar_left = fu_cx - 24
+# 黄色横线
+bar_h = 40
+bar_gap = 18
+bar_left = fu_cx - 22
 bar_right = fu_right + fu_w / 3
 bar_bottom = fu_top - bar_gap
 bar_top = bar_bottom - bar_h
 
-# 黑色机身：包住横线 + 浮字（含内边距）
-pad_x, pad_top, pad_bottom = 26, 22, 24
+# 黑色机身（包住横线+浮字）
+pad_x, pad_top, pad_bottom = 24, 20, 22
 body_left = min(fu_left, bar_left) - pad_x
 body_right = max(fu_right, bar_right) + pad_x
 body_top = bar_top - pad_top
 body_bottom = fu_bottom + pad_bottom
 
-draw.rounded_rectangle([body_left, body_top, body_right, body_bottom], radius=60, fill=(*DARK, 255))
-draw.rounded_rectangle([bar_left, bar_top, bar_right, bar_bottom], radius=18, fill=(*YELLOW, 255))
-draw.text((fu_cx, fu_cy), '浮', font=font_fu, fill=(*YELLOW, 255), anchor='mm')
-
-# 右侧天线（杆 + 圆头，向上伸出，整体仍在徽章内）
-ant_w = 24
-ant_x0 = body_right - 52
+# 右侧天线
+ant_w = 22
+ant_x0 = body_right - 46
 ant_x1 = ant_x0 + ant_w
-ant_top = body_top - 68
-draw.rounded_rectangle([ant_x0, ant_top, ant_x1, body_top], radius=12, fill=(*DARK, 255))
-draw.ellipse([ant_x0 + ant_w / 2 - 18, ant_top - 36, ant_x0 + ant_w / 2 + 18, ant_top], fill=(*DARK, 255))
+ant_top = body_top - 60
+ball_r = 16
+ball_cx = ant_x0 + ant_w / 2
+ball_top = ant_top - ball_r * 2
+
+# 组合图形整体边界 → 计算居中偏移
+comp_left = min(body_left, fu_left, bar_left)
+comp_right = max(body_right, fu_right, bar_right)
+comp_top = min(body_top, ball_top)
+comp_bottom = max(body_bottom, fu_bottom)
+
+dx = S / 2 - (comp_left + comp_right) / 2
+dy = S / 2 - (comp_top + comp_bottom) / 2
+
+def shift(v):
+    return v + dx
+
+def shift_y(v):
+    return v + dy
+
+# 应用偏移后绘制
+B = lambda r: [shift(r[0]), shift_y(r[1]), shift(r[2]), shift_y(r[3])]
+draw.rounded_rectangle(B([body_left, body_top, body_right, body_bottom]), radius=54, fill=(*DARK, 255))
+draw.rounded_rectangle(B([bar_left, bar_top, bar_right, bar_bottom]), radius=16, fill=(*YELLOW, 255))
+draw.text((shift(fu_cx), shift_y(fu_cy)), '浮', font=font_fu, fill=(*YELLOW, 255), anchor='mm')
+draw.rounded_rectangle(B([ant_x0, ant_top, ant_x1, body_top]), radius=11, fill=(*DARK, 255))
+draw.ellipse(B([ball_cx - ball_r, ant_top - ball_r * 2, ball_cx + ball_r, ant_top]), fill=(*DARK, 255))
 
 badge.save('log/icon-preview-512.png')
 for size in (128, 48, 32, 16):
