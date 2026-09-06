@@ -15,3 +15,6 @@ node_modules/
 
 # 本地原始收款码目录（发布版本在 src/assets/，随仓库公开）
 /assets/
+
+# 商店截图存放目录（本地使用，不入库）
+/screenshots/
