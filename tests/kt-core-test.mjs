@@ -1,6 +1,6 @@
 /* 核心算法回归测试（Node 下模拟 DOM 运行 inject.js）
  * 运行：node tests/kt-core-test.mjs src/inject.js
- * 覆盖：分词 / 设置归一化 / 字幕解析（手动+自动+广播碎片）/ 分块（硬停顿、说话人、标点）
+ * 覆盖：分词 / 设置归一化 / 字幕解析（手动+自动+广播碎片）/ 分块（硬停顿、说话人、标点）/ 句子翻译单元（句末切分、短句合并、逗号截断、定位）
  */
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -130,6 +130,47 @@ const pchunks = await api.chunkWords(mkWords(['aaaaaaaa', 'bbbbbbbb', 'cccccccc'
 assert(pchunks.length === 2, '标点断句成 2 块，got ' + pchunks.length);
 assert(pchunks[0].reason.startsWith('punctuation'), '原因 punctuation，got ' + pchunks[0].reason);
 assert(pchunks[1].reason === 'end_of_captions', '尾部收尾，got ' + pchunks[1].reason);
+
+/* 8. 句子单元：句末标点切分 */
+const su1 = api.buildSentenceUnits(mkWords(['one', 'two', 'three', 'four.', 'five', 'six', 'seven', 'eight.']));
+assert(su1.length === 2, '句末标点切成 2 句，got ' + su1.length);
+assert(su1[0].endIndex === 4 && su1[1].startIndex === 4, '句边界下标正确');
+
+/* 9. 句子单元：硬停顿切分 */
+const spWords = mkWords(['one', 'two', 'three', 'four', 'five', 'six']);
+spWords[3].start = spWords[2].end + 6000;
+spWords[3].end = spWords[3].start + 300;
+spWords[4].start = spWords[3].end + 350;
+spWords[4].end = spWords[4].start + 300;
+spWords[5].start = spWords[4].end + 350;
+spWords[5].end = spWords[5].start + 300;
+const su2 = api.buildSentenceUnits(spWords);
+assert(su2.length === 2, '硬停顿切成 2 句，got ' + su2.length);
+
+/* 10. 短句合并：3 词短句 + 下一句 4 词 → 1 个翻译单元 */
+const tuWords = mkWords(['I', 'see', 'you.', 'This', 'is', 'four', 'words.']);
+const su3 = api.buildSentenceUnits(tuWords);
+assert(su3.length === 2, '短句合并前有 2 句，got ' + su3.length);
+const tu1 = api.assembleTranslationUnits(tuWords);
+assert(tu1.length === 1, '短句合并为 1 个翻译单元，got ' + tu1.length);
+assert(tu1[0].endIndex === 7, '合并单元覆盖 7 词，got ' + tu1[0].endIndex);
+assert(tu1[0].text === 'I see you. This is four words.', '合并文本正确，got [' + tu1[0].text + ']');
+
+/* 11. 长句按逗号截断：9 词（约 5.5s 超上限）在逗号处截成 2 个单元 */
+const longWords = mkWords(['w0', 'w1', 'w2', 'w3,', 'w4', 'w5', 'w6', 'w7', 'w8']);
+const tu2 = api.assembleTranslationUnits(longWords);
+assert(tu2.length === 2, '超时按逗号截成 2 个单元，got ' + tu2.length);
+assert(tu2[0].endIndex === 4 && tu2[0].text.endsWith(','), '第一单元截至逗号，got [' + tu2[0].text + ']');
+assert(tu2[1].startIndex === 4, '第二单元从逗号后开始，got ' + tu2[1].startIndex);
+
+/* 12. 翻译单元二分定位 */
+const tuWords2 = mkWords(['one', 'two', 'three', 'four.', 'five', 'six', 'seven', 'eight.']);
+api.STATE.translationUnits = api.assembleTranslationUnits(tuWords2);
+assert(api.STATE.translationUnits.length === 2, '定位前有 2 个翻译单元');
+assert(api.findTranslationUnit(2) === api.STATE.translationUnits[0], '二分定位到单元 0');
+assert(api.findTranslationUnit(5) === api.STATE.translationUnits[1], '二分定位到单元 1');
+assert(api.findTranslationUnit(-1) === null, '负下标返回 null');
+assert(api.findTranslationUnit(99) === null, '越界大下标返回 null');
 
 console.log('\n==== ' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED') + ' ====');
 process.exit(failed === 0 ? 0 : 1);

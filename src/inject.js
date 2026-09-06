@@ -231,6 +231,10 @@
     asrLang: null,
     words: [],
     chunks: [],
+    sentenceUnits: [],
+    translationUnits: [],
+    currentChunkWordStart: -1,
+    currentChunkWordEnd: -1,
     overlay: null,
     overlayText: null,
     measurer: null,
@@ -890,6 +894,139 @@
     return out;
   }
 
+  /* ============================ 句子单元（仅用于整句翻译） ============================ */
+
+  const SENTENCE_END_RE = /[.!?。！？…]$/;
+  const CLAUSE_SPLIT_RE = /[,;:，；：]$/;
+
+  function unitWordCount(unit) { return unit.endIndex - unit.startIndex; }
+
+  function unitDurationMs(unit, words) {
+    const first = words[unit.startIndex];
+    const last = words[unit.endIndex - 1];
+    if (!first || !last) return 0;
+    return (last.end != null ? last.end : last.start) - first.start;
+  }
+
+  function joinUnitText(words, unit) {
+    let text = '';
+    for (let i = unit.startIndex; i < unit.endIndex; i++) {
+      const w = String(words[i].text || '').replace(/\s+/g, ' ').trim();
+      if (!w) continue;
+      text = text ? text + ' ' + w : w;
+    }
+    return text;
+  }
+
+  function buildSentenceUnits(words) {
+    const units = [];
+    let start = 0;
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      const next = words[i + 1];
+      let endSentence = SENTENCE_END_RE.test(w.text);
+      if (!endSentence && next) {
+        if (/^\s*(>>|<<)/.test(next.text)) {
+          endSentence = true;
+        } else {
+          const curEnd = w.end != null ? w.end : w.start;
+          if (next.start - curEnd >= CFG.hardPauseMs) endSentence = true;
+        }
+      }
+      if (!endSentence && i < words.length - 1) continue;
+      units.push({ startIndex: start, endIndex: i + 1 });
+      start = i + 1;
+    }
+    if (start < words.length) units.push({ startIndex: start, endIndex: words.length });
+    return units;
+  }
+
+  function unitTooShort(unit, words) {
+    return unitWordCount(unit) < 4 || unitDurationMs(unit, words) < 800;
+  }
+
+  function unitTooLong(unit, words) {
+    return unitWordCount(unit) > CFG.maxWords || unitDurationMs(unit, words) > CFG.maxDurMs;
+  }
+
+  function splitLongUnit(unit, words) {
+    const parts = [];
+    let curStart = unit.startIndex;
+    let lastCommaEnd = -1;
+    for (let i = unit.startIndex; i < unit.endIndex; i++) {
+      if (CLAUSE_SPLIT_RE.test(words[i].text)) lastCommaEnd = i + 1;
+      const isLast = i === unit.endIndex - 1;
+      const probe = { startIndex: curStart, endIndex: i + 1 };
+      if (unitTooLong(probe, words)) {
+        let cut = lastCommaEnd > curStart ? lastCommaEnd : i;
+        if (cut <= curStart) cut = i + 1; // 至少切一个词
+        parts.push({ startIndex: curStart, endIndex: cut });
+        curStart = cut;
+        lastCommaEnd = -1;
+      }
+      if (isLast) {
+        if (curStart < unit.endIndex) parts.push({ startIndex: curStart, endIndex: unit.endIndex });
+        break;
+      }
+    }
+    if (!parts.length && unit.endIndex > unit.startIndex) {
+      parts.push({ startIndex: unit.startIndex, endIndex: unit.endIndex });
+    }
+    return parts;
+  }
+
+  function assembleTranslationUnits(words) {
+    const sentences = buildSentenceUnits(words);
+    const units = [];
+    let i = 0;
+    while (i < sentences.length) {
+      let unit = { startIndex: sentences[i].startIndex, endIndex: sentences[i].endIndex };
+      let consumed = 1;
+      // 短句合并下一句（最多 2 句）
+      if (unitTooShort(unit, words) && i + 1 < sentences.length) {
+        unit = { startIndex: unit.startIndex, endIndex: sentences[i + 1].endIndex };
+        consumed = 2;
+      }
+      // 单句或合并后太长：按逗号截断，剩余部分成为后续翻译单元
+      if (unitTooLong(unit, words)) {
+        for (const part of splitLongUnit(unit, words)) {
+          if (part.endIndex > part.startIndex) {
+            units.push({ startIndex: part.startIndex, endIndex: part.endIndex, text: joinUnitText(words, part) });
+          }
+        }
+      } else {
+        units.push({ startIndex: unit.startIndex, endIndex: unit.endIndex, text: joinUnitText(words, unit) });
+      }
+      i += consumed;
+    }
+    return units;
+  }
+
+  function findTranslationUnit(globalIndex) {
+    const units = STATE.translationUnits;
+    if (!units.length || globalIndex < 0) return null;
+    let lo = 0;
+    let hi = units.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const u = units[mid];
+      if (globalIndex < u.startIndex) hi = mid - 1;
+      else if (globalIndex >= u.endIndex) lo = mid + 1;
+      else return u;
+    }
+    return null;
+  }
+
+  function currentTranslationUnitText() {
+    const first = STATE.firstSel;
+    const localIndex = first ? getWordIndex(first) : null;
+    if (localIndex != null && STATE.currentChunkWordStart >= 0) {
+      const unit = findTranslationUnit(STATE.currentChunkWordStart + localIndex);
+      if (unit && unit.text) return unit.text;
+    }
+    return STATE.activeChunkRaw || '';
+  }
+
   function processTimedtext(text) {
     let data;
     try { data = JSON.parse(text); }
@@ -905,6 +1042,9 @@
       return;
     }
     STATE.words = words;
+    STATE.sentenceUnits = buildSentenceUnits(words);
+    STATE.translationUnits = assembleTranslationUnits(words);
+    debugLog('sentence_units', { sentences: STATE.sentenceUnits.length, translationUnits: STATE.translationUnits.length });
     STATE.chunkBuildSignature = null;
     STATE.chunkBuildInFlightSignature = null;
     clearTriggerRetry();
@@ -1119,6 +1259,8 @@
         endMs,
         text: applyTextCase(rawText),
         rawText,
+        wordStartIndex: startIndex,
+        wordEndIndex: endExclusive,
         lastWordStartMs: lastWordStart,
         lastWordEndMs: lastWordEnd != null ? lastWordEnd : null,
         nextStartMs: nextStart,
@@ -1554,6 +1696,8 @@
     STATE.lastText = text;
     STATE.activeChunkText = text;
     STATE.activeChunkRaw = active ? active.rawText : '';
+    STATE.currentChunkWordStart = active ? active.wordStartIndex : -1;
+    STATE.currentChunkWordEnd = active ? active.wordEndIndex : -1;
     STATE.overlay.dataset.empty = text ? '0' : '1';
     checkPointerState();
     debugLog('render', { text: text.slice(0, 80), reason: active ? active.reason : 'none' });
@@ -1862,7 +2006,7 @@
     cancelHoverTimer();
     const selText = getSelectedText();
     if (!selText) return;
-    const lineText = STATE.settings.sentenceTranslation ? STATE.activeChunkRaw : '';
+    const lineText = STATE.settings.sentenceTranslation ? currentTranslationUnitText() : '';
     const wordHit = !!cacheGet(STATE.wordCache, selText);
     const lineOk = !lineText || !!cacheGet(STATE.lineCache, lineText);
     if (wordHit && lineOk) {
@@ -1876,7 +2020,7 @@
     const selText = getSelectedText();
     if (!selText) return;
     const gen = ++STATE.hoverGen;
-    const lineText = STATE.settings.sentenceTranslation ? (STATE.activeChunkRaw || '') : '';
+    const lineText = STATE.settings.sentenceTranslation ? (currentTranslationUnitText() || '') : '';
     const controller = new AbortController();
     abortActiveRequests();
     STATE.abortController = controller;
@@ -2405,6 +2549,10 @@
     STATE.measureRange = null;
     STATE.words = [];
     STATE.chunks = [];
+    STATE.sentenceUnits = [];
+    STATE.translationUnits = [];
+    STATE.currentChunkWordStart = -1;
+    STATE.currentChunkWordEnd = -1;
     STATE.asrLang = null;
     STATE.videoId = null;
     STATE.lastText = null;
@@ -2496,6 +2644,9 @@
     getTextEventInfo,
     extractWords,
     chunkWords,
+    buildSentenceUnits,
+    assembleTranslationUnits,
+    findTranslationUnit,
     STATE,
   };
 })();
