@@ -139,8 +139,19 @@
   text-shadow: 0 0 2px rgba(255, 255, 255, 0.85), 0 0 4px rgba(255, 213, 74, 0.6);
 }
 
+/* Shift 多选中的词：与当前悬停词完全一致的效果（发光 + 加粗 + 放大） */
 .kt-word-selected {
-  text-shadow: 0 0 2px rgba(255, 255, 255, 0.85), 0 0 5px rgba(140, 180, 255, 0.75);
+  display: inline-block;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  transform: scale(1.12);
+  transform-origin: center bottom;
+  background: transparent !important;
+  text-shadow:
+    0 0 1px #fffbe6,
+    0 0 2.5px #ffd54a,
+    0 0 5px #ffab00,
+    0 0 7px rgba(255, 171, 0, 0.45) !important;
 }
 
 /* 当前选中词：字形边缘发光（范围小、贴合笔画）+ 加粗 + 放大（transform 不挤动排版） */
