@@ -94,9 +94,13 @@
   // 弹窗 → 页面：请求下载调试诊断 JSON
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.action === 'kt-debug-download') {
-      document.documentElement.dispatchEvent(new CustomEvent('kt-debug-download'));
-      sendResponse({ ok: true });
-      return false;
+      // 先让 MAIN world 把最新报告刷新到 dataset（ISOLATED 与 MAIN 共享 DOM），
+      // 再由弹窗自己保存文件，绕开 YouTube 页面 CSP 对下载的拦截。
+      document.documentElement.dispatchEvent(new CustomEvent('kt-debug-sync'));
+      setTimeout(() => {
+        sendResponse({ ok: true, report: document.documentElement.dataset.ktDebugReport || null });
+      }, 80);
+      return true; // 异步响应
     }
     return false;
   });

@@ -284,6 +284,7 @@
     lastX: null,
     lastY: null,
     debugLogs: [],
+    lastDebugSyncAt: 0,
   };
   window.__ktState = STATE;
 
@@ -299,6 +300,35 @@
     if (!STATE.settings.debug) return;
     STATE.debugLogs.push({ at: Date.now(), type, detail });
     if (STATE.debugLogs.length > 500) STATE.debugLogs.splice(0, STATE.debugLogs.length - 500);
+    const now = Date.now();
+    if (!STATE.lastDebugSyncAt || now - STATE.lastDebugSyncAt > 1500) syncDebugReport();
+  }
+
+  /* 生成完整诊断报告（供弹窗经桥接脚本拉取下载） */
+  function buildDebugReport() {
+    return {
+      at: new Date().toISOString(),
+      url: location.href,
+      videoId: STATE.videoId,
+      settings: STATE.settings,
+      statusMode: STATE.statusMode,
+      chunks: STATE.chunks.length,
+      words: STATE.words.length,
+      timedtextRequests: STATE.timedtextRequestCount,
+      timedtextResponses: STATE.timedtextResponseCount,
+      lastTimedtextResponse: STATE.lastTimedtextResponse,
+      lastCaptionTracks: STATE.lastCaptionTracks,
+      caches: { word: STATE.wordCache.size, line: STATE.lineCache.size },
+      logs: STATE.debugLogs.slice(-300),
+      chunksPreview: STATE.chunks.slice(0, 60).map((c) => ({ s: c.startMs, e: c.endMs, reason: c.reason, text: (c.text || '').slice(0, 80) })),
+    };
+  }
+
+  function syncDebugReport() {
+    try {
+      document.documentElement.dataset.ktDebugReport = JSON.stringify(buildDebugReport());
+      STATE.lastDebugSyncAt = Date.now();
+    } catch (e) { /* 序列化失败则跳过 */ }
   }
   const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
 
@@ -1802,9 +1832,11 @@
       const dict = data.dictionary || '';
       setTooltipSection('meta', (metaParts.length ? metaParts.join('  ·  ') + (dict ? '\n' : '') : '') + dict);
       positionTooltip();
-    }).catch(() => {
+    }).catch((err) => {
       if (gen !== STATE.hoverGen) return;
-      setTooltipSection('word', t('translationFailed'));
+      const msg = String((err && err.message) || err);
+      debugLog('translate_error', { kind: 'word', text: selText, error: msg });
+      setTooltipSection('word', t('translationFailed') + '：' + msg);
       const el = tooltipSection('word');
       if (el) el.classList.add('kt-tooltip-error');
     });
@@ -1816,9 +1848,11 @@
         if (gen !== STATE.hoverGen) return;
         setTooltipSection('line', data && data.translatedText ? data.translatedText : t('translationFailed'));
         positionTooltip();
-      }).catch(() => {
+      }).catch((err) => {
         if (gen !== STATE.hoverGen) return;
-        setTooltipSection('line', t('translationFailed'));
+        const msg = String((err && err.message) || err);
+        debugLog('translate_error', { kind: 'line', text: lineText, error: msg });
+        setTooltipSection('line', t('translationFailed') + '：' + msg);
       });
     }
   }
@@ -2321,23 +2355,13 @@
 
   /* ============================ 调试诊断 ============================ */
 
+  document.documentElement.addEventListener('kt-debug-sync', () => syncDebugReport());
+
+  // 旧路径兜底：页面内直接下载（可能被页面 CSP 拦截，故仅作备用）
   document.documentElement.addEventListener('kt-debug-download', () => {
-    const report = {
-      at: new Date().toISOString(),
-      url: location.href,
-      videoId: STATE.videoId,
-      settings: STATE.settings,
-      statusMode: STATE.statusMode,
-      chunks: STATE.chunks.length,
-      words: STATE.words.length,
-      timedtextRequests: STATE.timedtextRequestCount,
-      timedtextResponses: STATE.timedtextResponseCount,
-      lastCaptionTracks: STATE.lastCaptionTracks,
-      caches: { word: STATE.wordCache.size, line: STATE.lineCache.size },
-      logs: STATE.debugLogs.slice(-200),
-      chunksPreview: STATE.chunks.slice(0, 60).map((c) => ({ s: c.startMs, e: c.endMs, reason: c.reason, text: (c.text || '').slice(0, 60) })),
-    };
+    syncDebugReport();
     try {
+      const report = JSON.parse(document.documentElement.dataset.ktDebugReport || 'null') || buildDebugReport();
       const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -2348,7 +2372,7 @@
         URL.revokeObjectURL(a.href);
         a.remove();
       }, 1000);
-    } catch (e) { /* 忽略 */ }
+    } catch (e) { /* 页面拦截下载则静默，弹窗路径会兜底 */ }
   });
 
   /* ============================ 导航监听与启动 ============================ */

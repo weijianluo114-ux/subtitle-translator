@@ -467,13 +467,39 @@ function bind() {
   });
 
   $('debug-download').addEventListener('click', async () => {
+    const statusEl = $('debug-status');
+    const setStatus = (msg, isErr) => {
+      statusEl.textContent = msg;
+      statusEl.style.color = isErr ? '#d93025' : '#2563eb';
+    };
     try {
+      setStatus('正在收集诊断日志…', false);
       const tabs = await chrome.tabs.query({ url: ['*://www.youtube.com/*', '*://m.youtube.com/*'] });
-      const tab = tabs.find((x) => x.active) || tabs[0];
-      if (tab && tab.id != null) {
-        await chrome.tabs.sendMessage(tab.id, { action: 'kt-debug-download' });
+      if (!tabs.length) {
+        setStatus('未找到 YouTube 标签页，请先打开视频页面', true);
+        return;
       }
-    } catch (e) { /* 无 YouTube 标签或发送失败 */ }
+      const tab = tabs.find((x) => x.active) || tabs[0];
+      const resp = await chrome.tabs.sendMessage(tab.id, { action: 'kt-debug-download' });
+      const report = resp && resp.report;
+      if (!report) {
+        setStatus('获取失败：请刷新 YouTube 页面后重试（并确认已开启调试模式）', true);
+        return;
+      }
+      const text = typeof report === 'string' ? report : JSON.stringify(report, null, 2);
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'kt-debug-' + Date.now() + '.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus('已下载诊断报告 ✓', false);
+    } catch (e) {
+      setStatus('获取失败：请刷新 YouTube 页面后重试（' + String((e && e.message) || e) + '）', true);
+    }
   });
 
   const APPEARANCE_SCOPE = ['enabled','manualCaptions','targetLines','textSize','font','textColor','textOpacity','background','allCaps','textOutline','textBold','positionMode','position','posX','posY','captionWidth','widthPercent','tooltipFollowSubtitle','tooltip'];
