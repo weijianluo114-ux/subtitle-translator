@@ -326,6 +326,21 @@
       lastTimedtextResponse: STATE.lastTimedtextResponse,
       lastCaptionTracks: STATE.lastCaptionTracks,
       caches: { word: STATE.wordCache.size, line: STATE.lineCache.size },
+      tooltip: {
+        exists: !!STATE.tooltip,
+        visible: !!(STATE.tooltip && STATE.tooltip.style.visibility === 'visible'),
+        inBody: !!(STATE.tooltip && document.body.contains(STATE.tooltip)),
+        parent: STATE.tooltip && STATE.tooltip.parentElement ? (STATE.tooltip.parentElement.id || STATE.tooltip.parentElement.tagName.toLowerCase()) : null,
+      },
+      pointer: {
+        lastX: STATE.lastX,
+        lastY: STATE.lastY,
+        shiftHeld: STATE.shiftHeld,
+        fullscreen: !!document.fullscreenElement,
+      },
+      polling: { active: !!STATE.pollId },
+      pause: { claimedVideo: !!pauseController.claimedVideo },
+      selection: { selected: STATE.selectedWords.size, activeWord: STATE.activeWord ? (STATE.activeWord.textContent || '').slice(0, 40) : null },
       logs: STATE.debugLogs.slice(-300),
       chunksPreview: STATE.chunks.slice(0, 60).map((c) => ({ s: c.startMs, e: c.endMs, reason: c.reason, text: (c.text || '').slice(0, 80) })),
     };
@@ -1752,6 +1767,22 @@
     STATE.pollId = null;
   }
 
+  /* ---- 全屏切换：播放器重排 + 指针坐标错位可能吞掉 pointerleave，主动清理一次 ---- */
+  function handleFullscreenChange() {
+    debugLog('fullscreen_change', {
+      fullscreen: !!document.fullscreenElement,
+      tooltipVisible: !!(STATE.tooltip && STATE.tooltip.style.visibility === 'visible'),
+      claimedVideo: !!pauseController.claimedVideo,
+      lastX: STATE.lastX,
+      lastY: STATE.lastY,
+    });
+    onSubtitleLeave();
+    if (!document.fullscreenElement && STATE.tooltip && document.body.contains(STATE.tooltip) && STATE.tooltip.parentElement !== document.body) {
+      // 气泡原先挂在全屏播放器节点上，退出全屏后移回 body，避免悬挂在异常容器
+      document.body.appendChild(STATE.tooltip);
+    }
+  }
+
   /* ============================ 悬停 / 选择 / 气泡 ============================ */
 
   function getWordIndex(el) {
@@ -2628,6 +2659,9 @@
 
   // 追踪指针位置：供"看门狗"在 pointerleave 被吞掉的场景兜底清理
   document.addEventListener('pointermove', trackPointer, true);
+
+  // 全屏进入/退出都会重排播放器，主动清理气泡与暂停状态，防止残留
+  document.addEventListener('fullscreenchange', handleFullscreenChange, true);
 
   // 追踪 Shift 状态：供"按住 Shift 拖选多词"使用
   document.addEventListener('keydown', (e) => { if (e.key === 'Shift') STATE.shiftHeld = true; }, true);
