@@ -440,11 +440,53 @@
     });
   }
 
+  /* 页面侧直连 Google（经 ISOLATED 桥在页面进程内 fetch）：
+   * 走页面同款网络/代理，且不受页面 CSP 限制；用于恢复"国内+代理"场景下 Google 的可用性 */
+  function requestGoogleDirect(text, sl, tl) {
+    return new Promise((resolve) => {
+      const id = 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        document.documentElement.removeEventListener('kt-direct-response', onResp);
+        resolve({ ok: false, error: 'direct-timeout' });
+      }, 12000);
+      const onResp = (e) => {
+        if (!e.detail || e.detail.id !== id) return;
+        settled = true;
+        clearTimeout(timer);
+        document.documentElement.removeEventListener('kt-direct-response', onResp);
+        resolve(e.detail);
+      };
+      document.documentElement.addEventListener('kt-direct-response', onResp);
+      document.documentElement.dispatchEvent(new CustomEvent('kt-direct-request', {
+        detail: { id, text, sl, tl },
+      }));
+    });
+  }
+
   async function translateText(text, signal) {
     const raw = String(text || '').trim();
     if (!raw) return null;
     const limited = raw.length > CFG.maxTranslateChars ? raw.slice(0, CFG.maxTranslateChars) : raw;
     const translatorKey = STATE.settings.translator === 'bing' ? 'bing' : 'google';
+
+    // 首选：页面侧直连 Google（走页面同款网络/代理）
+    if (translatorKey === 'google') {
+      const direct = await requestGoogleDirect(limited, STATE.settings.sourceLanguage, STATE.settings.targetLanguage);
+      if (direct && direct.ok && direct.translatedText) {
+        return {
+          translatedText: direct.translatedText,
+          detectedLanguageCode: direct.detectedLanguageCode || '',
+          dictionary: direct.dictionary || '',
+          transliteration: direct.transliteration || '',
+          transcription: direct.transcription || '',
+        };
+      }
+    }
+
+    // 兜底：后台代理链（上次成功引擎 > 首选 > Google → Bing → MyMemory）
     const r = await requestTranslationViaBridge(
       translatorKey,
       limited,

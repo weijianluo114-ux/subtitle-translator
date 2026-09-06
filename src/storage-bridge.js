@@ -91,6 +91,71 @@
     chrome.runtime.sendMessage({ action: 'abortTranslate', requestId: id }, () => void chrome.runtime.lastError);
   });
 
+  // 页面侧直连 Google：ISOLATED content script 走页面同款网络/代理，且不受页面 CSP 限制
+  const GOOGLE_DIRECT_HOSTS = [
+    'https://translate.googleapis.com/translate_a/single',
+    'https://translate.google.com/translate_a/single',
+  ];
+  const GOOGLE_DIRECT_CLIENTS = ['dict-chrome-ex', 'at', 'gtx'];
+
+  document.documentElement.addEventListener('kt-direct-request', (e) => {
+    const detail = (e && e.detail) || {};
+    if (!detail.id || !detail.text) return;
+    (async () => {
+      let lastErr = null;
+      for (const host of GOOGLE_DIRECT_HOSTS) {
+        for (const client of GOOGLE_DIRECT_CLIENTS) {
+          try {
+            const params = new URLSearchParams([
+              ['client', client],
+              ['q', detail.text],
+              ['sl', detail.sl || 'auto'],
+              ['tl', detail.tl || 'en'],
+              ['hl', detail.tl || 'en'],
+              ['dj', '1'],
+              ['dt', 't'],
+              ['dt', 'bd'],
+              ['dt', 'rm'],
+            ]);
+            const resp = await fetch(host + '?' + params.toString());
+            if (!resp.ok) throw new Error('google-http-' + resp.status);
+            const data = await resp.json();
+            if (!Array.isArray(data.sentences)) throw new Error('google-empty');
+            let translated = '';
+            let translit = '';
+            let srcTranslit = '';
+            for (const s of data.sentences) {
+              translated += s.trans || '';
+              translit += s.translit || '';
+              srcTranslit += s.src_translit || '';
+            }
+            let dict = '';
+            for (const d of data.dict || []) {
+              dict += (d.pos || '') + ': ' + (d.terms || []).join(', ') + ';\n';
+            }
+            post('kt-direct-response', {
+              id: detail.id,
+              ok: true,
+              translatedText: translated,
+              detectedLanguageCode: data.src || '',
+              dictionary: dict,
+              transliteration: translit,
+              transcription: srcTranslit,
+            });
+            return;
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+      }
+      post('kt-direct-response', {
+        id: detail.id,
+        ok: false,
+        error: String((lastErr && lastErr.message) || lastErr),
+      });
+    })();
+  });
+
   // 弹窗 → 页面：请求下载调试诊断 JSON
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.action === 'kt-debug-download') {
