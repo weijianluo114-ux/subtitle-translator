@@ -12,7 +12,7 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "kt-feedback"
-database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
+database_id = "5ec0f9e0-12fd-4c94-895b-32ed14212c25"
 
 # 每天 UTC 03:00（北京 11:00）清理过期反馈
 [triggers]
