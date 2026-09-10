@@ -231,6 +231,10 @@
     asrLang: null,
     words: [],
     chunks: [],
+    sentenceUnits: [],
+    translationUnits: [],
+    currentChunkWordStart: -1,
+    currentChunkWordEnd: -1,
     overlay: null,
     overlayText: null,
     measurer: null,
@@ -322,6 +326,21 @@
       lastTimedtextResponse: STATE.lastTimedtextResponse,
       lastCaptionTracks: STATE.lastCaptionTracks,
       caches: { word: STATE.wordCache.size, line: STATE.lineCache.size },
+      tooltip: {
+        exists: !!STATE.tooltip,
+        visible: !!(STATE.tooltip && STATE.tooltip.style.visibility === 'visible'),
+        inBody: !!(STATE.tooltip && document.body.contains(STATE.tooltip)),
+        parent: STATE.tooltip && STATE.tooltip.parentElement ? (STATE.tooltip.parentElement.id || STATE.tooltip.parentElement.tagName.toLowerCase()) : null,
+      },
+      pointer: {
+        lastX: STATE.lastX,
+        lastY: STATE.lastY,
+        shiftHeld: STATE.shiftHeld,
+        fullscreen: !!document.fullscreenElement,
+      },
+      polling: { active: !!STATE.pollId },
+      pause: { claimedVideo: !!pauseController.claimedVideo },
+      selection: { selected: STATE.selectedWords.size, activeWord: STATE.activeWord ? (STATE.activeWord.textContent || '').slice(0, 40) : null },
       logs: STATE.debugLogs.slice(-300),
       chunksPreview: STATE.chunks.slice(0, 60).map((c) => ({ s: c.startMs, e: c.endMs, reason: c.reason, text: (c.text || '').slice(0, 80) })),
     };
@@ -890,6 +909,139 @@
     return out;
   }
 
+  /* ============================ 句子单元（仅用于整句翻译） ============================ */
+
+  const SENTENCE_END_RE = /[.!?。！？…]$/;
+  const CLAUSE_SPLIT_RE = /[,;:，；：]$/;
+
+  function unitWordCount(unit) { return unit.endIndex - unit.startIndex; }
+
+  function unitDurationMs(unit, words) {
+    const first = words[unit.startIndex];
+    const last = words[unit.endIndex - 1];
+    if (!first || !last) return 0;
+    return (last.end != null ? last.end : last.start) - first.start;
+  }
+
+  function joinUnitText(words, unit) {
+    let text = '';
+    for (let i = unit.startIndex; i < unit.endIndex; i++) {
+      const w = String(words[i].text || '').replace(/\s+/g, ' ').trim();
+      if (!w) continue;
+      text = text ? text + ' ' + w : w;
+    }
+    return text;
+  }
+
+  function buildSentenceUnits(words) {
+    const units = [];
+    let start = 0;
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      const next = words[i + 1];
+      let endSentence = SENTENCE_END_RE.test(w.text);
+      if (!endSentence && next) {
+        if (/^\s*(>>|<<)/.test(next.text)) {
+          endSentence = true;
+        } else {
+          const curEnd = w.end != null ? w.end : w.start;
+          if (next.start - curEnd >= CFG.hardPauseMs) endSentence = true;
+        }
+      }
+      if (!endSentence && i < words.length - 1) continue;
+      units.push({ startIndex: start, endIndex: i + 1 });
+      start = i + 1;
+    }
+    if (start < words.length) units.push({ startIndex: start, endIndex: words.length });
+    return units;
+  }
+
+  function unitTooShort(unit, words) {
+    return unitWordCount(unit) < 4 || unitDurationMs(unit, words) < 800;
+  }
+
+  function unitTooLong(unit, words) {
+    return unitWordCount(unit) > CFG.maxWords || unitDurationMs(unit, words) > CFG.maxDurMs;
+  }
+
+  function splitLongUnit(unit, words) {
+    const parts = [];
+    let curStart = unit.startIndex;
+    let lastCommaEnd = -1;
+    for (let i = unit.startIndex; i < unit.endIndex; i++) {
+      if (CLAUSE_SPLIT_RE.test(words[i].text)) lastCommaEnd = i + 1;
+      const isLast = i === unit.endIndex - 1;
+      const probe = { startIndex: curStart, endIndex: i + 1 };
+      if (unitTooLong(probe, words)) {
+        let cut = lastCommaEnd > curStart ? lastCommaEnd : i;
+        if (cut <= curStart) cut = i + 1; // 至少切一个词
+        parts.push({ startIndex: curStart, endIndex: cut });
+        curStart = cut;
+        lastCommaEnd = -1;
+      }
+      if (isLast) {
+        if (curStart < unit.endIndex) parts.push({ startIndex: curStart, endIndex: unit.endIndex });
+        break;
+      }
+    }
+    if (!parts.length && unit.endIndex > unit.startIndex) {
+      parts.push({ startIndex: unit.startIndex, endIndex: unit.endIndex });
+    }
+    return parts;
+  }
+
+  function assembleTranslationUnits(words) {
+    const sentences = buildSentenceUnits(words);
+    const units = [];
+    let i = 0;
+    while (i < sentences.length) {
+      let unit = { startIndex: sentences[i].startIndex, endIndex: sentences[i].endIndex };
+      let consumed = 1;
+      // 短句合并下一句（最多 2 句）
+      if (unitTooShort(unit, words) && i + 1 < sentences.length) {
+        unit = { startIndex: unit.startIndex, endIndex: sentences[i + 1].endIndex };
+        consumed = 2;
+      }
+      // 单句或合并后太长：按逗号截断，剩余部分成为后续翻译单元
+      if (unitTooLong(unit, words)) {
+        for (const part of splitLongUnit(unit, words)) {
+          if (part.endIndex > part.startIndex) {
+            units.push({ startIndex: part.startIndex, endIndex: part.endIndex, text: joinUnitText(words, part) });
+          }
+        }
+      } else {
+        units.push({ startIndex: unit.startIndex, endIndex: unit.endIndex, text: joinUnitText(words, unit) });
+      }
+      i += consumed;
+    }
+    return units;
+  }
+
+  function findTranslationUnit(globalIndex) {
+    const units = STATE.translationUnits;
+    if (!units.length || globalIndex < 0) return null;
+    let lo = 0;
+    let hi = units.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const u = units[mid];
+      if (globalIndex < u.startIndex) hi = mid - 1;
+      else if (globalIndex >= u.endIndex) lo = mid + 1;
+      else return u;
+    }
+    return null;
+  }
+
+  function currentTranslationUnitText() {
+    const first = STATE.firstSel;
+    const localIndex = first ? getWordIndex(first) : null;
+    if (localIndex != null && STATE.currentChunkWordStart >= 0) {
+      const unit = findTranslationUnit(STATE.currentChunkWordStart + localIndex);
+      if (unit && unit.text) return unit.text;
+    }
+    return STATE.activeChunkRaw || '';
+  }
+
   function processTimedtext(text) {
     let data;
     try { data = JSON.parse(text); }
@@ -905,6 +1057,9 @@
       return;
     }
     STATE.words = words;
+    STATE.sentenceUnits = buildSentenceUnits(words);
+    STATE.translationUnits = assembleTranslationUnits(words);
+    debugLog('sentence_units', { sentences: STATE.sentenceUnits.length, translationUnits: STATE.translationUnits.length });
     STATE.chunkBuildSignature = null;
     STATE.chunkBuildInFlightSignature = null;
     clearTriggerRetry();
@@ -1119,6 +1274,8 @@
         endMs,
         text: applyTextCase(rawText),
         rawText,
+        wordStartIndex: startIndex,
+        wordEndIndex: endExclusive,
         lastWordStartMs: lastWordStart,
         lastWordEndMs: lastWordEnd != null ? lastWordEnd : null,
         nextStartMs: nextStart,
@@ -1554,6 +1711,8 @@
     STATE.lastText = text;
     STATE.activeChunkText = text;
     STATE.activeChunkRaw = active ? active.rawText : '';
+    STATE.currentChunkWordStart = active ? active.wordStartIndex : -1;
+    STATE.currentChunkWordEnd = active ? active.wordEndIndex : -1;
     STATE.overlay.dataset.empty = text ? '0' : '1';
     checkPointerState();
     debugLog('render', { text: text.slice(0, 80), reason: active ? active.reason : 'none' });
@@ -1606,6 +1765,22 @@
   function stopPolling() {
     if (STATE.pollId) clearInterval(STATE.pollId);
     STATE.pollId = null;
+  }
+
+  /* ---- 全屏切换：播放器重排 + 指针坐标错位可能吞掉 pointerleave，主动清理一次 ---- */
+  function handleFullscreenChange() {
+    debugLog('fullscreen_change', {
+      fullscreen: !!document.fullscreenElement,
+      tooltipVisible: !!(STATE.tooltip && STATE.tooltip.style.visibility === 'visible'),
+      claimedVideo: !!pauseController.claimedVideo,
+      lastX: STATE.lastX,
+      lastY: STATE.lastY,
+    });
+    onSubtitleLeave();
+    if (!document.fullscreenElement && STATE.tooltip && document.body.contains(STATE.tooltip) && STATE.tooltip.parentElement !== document.body) {
+      // 气泡原先挂在全屏播放器节点上，退出全屏后移回 body，避免悬挂在异常容器
+      document.body.appendChild(STATE.tooltip);
+    }
   }
 
   /* ============================ 悬停 / 选择 / 气泡 ============================ */
@@ -1862,7 +2037,7 @@
     cancelHoverTimer();
     const selText = getSelectedText();
     if (!selText) return;
-    const lineText = STATE.settings.sentenceTranslation ? STATE.activeChunkRaw : '';
+    const lineText = STATE.settings.sentenceTranslation ? currentTranslationUnitText() : '';
     const wordHit = !!cacheGet(STATE.wordCache, selText);
     const lineOk = !lineText || !!cacheGet(STATE.lineCache, lineText);
     if (wordHit && lineOk) {
@@ -1876,7 +2051,7 @@
     const selText = getSelectedText();
     if (!selText) return;
     const gen = ++STATE.hoverGen;
-    const lineText = STATE.settings.sentenceTranslation ? (STATE.activeChunkRaw || '') : '';
+    const lineText = STATE.settings.sentenceTranslation ? (currentTranslationUnitText() || '') : '';
     const controller = new AbortController();
     abortActiveRequests();
     STATE.abortController = controller;
@@ -2405,6 +2580,10 @@
     STATE.measureRange = null;
     STATE.words = [];
     STATE.chunks = [];
+    STATE.sentenceUnits = [];
+    STATE.translationUnits = [];
+    STATE.currentChunkWordStart = -1;
+    STATE.currentChunkWordEnd = -1;
     STATE.asrLang = null;
     STATE.videoId = null;
     STATE.lastText = null;
@@ -2481,6 +2660,9 @@
   // 追踪指针位置：供"看门狗"在 pointerleave 被吞掉的场景兜底清理
   document.addEventListener('pointermove', trackPointer, true);
 
+  // 全屏进入/退出都会重排播放器，主动清理气泡与暂停状态，防止残留
+  document.addEventListener('fullscreenchange', handleFullscreenChange, true);
+
   // 追踪 Shift 状态：供"按住 Shift 拖选多词"使用
   document.addEventListener('keydown', (e) => { if (e.key === 'Shift') STATE.shiftHeld = true; }, true);
   document.addEventListener('keyup', (e) => { if (e.key === 'Shift') STATE.shiftHeld = false; }, true);
@@ -2496,6 +2678,9 @@
     getTextEventInfo,
     extractWords,
     chunkWords,
+    buildSentenceUnits,
+    assembleTranslationUnits,
+    findTranslationUnit,
     STATE,
   };
 })();

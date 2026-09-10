@@ -1,0 +1,23 @@
+# Cloudflare Worker 配置
+# 部署前需要改的只有一处：database_id（第 2 步 `wrangler d1 create` 会返回）
+
+name = "kt-feedback"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# 免费计划即可；保持默认的 workers.dev 域名
+workers_dev = true
+
+# D1 数据库绑定：代码里用 env.DB 访问
+[[d1_databases]]
+binding = "DB"
+database_name = "kt-feedback"
+database_id = "5ec0f9e0-12fd-4c94-895b-32ed14212c25"
+
+# 每天 UTC 03:00（北京 11:00）清理过期反馈
+[triggers]
+crons = ["0 3 * * *"]
+
+# 观察日志（wrangler tail）用
+[observability]
+enabled = true
