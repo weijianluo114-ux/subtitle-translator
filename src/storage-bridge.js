@@ -168,6 +168,35 @@
       }, 80);
       return true; // 异步响应
     }
+    // 反馈页：取当前视频链接 + 最近调试日志（仅用户勾选「附上诊断信息」时才会调用）
+    if (message && message.action === 'kt-feedback-collect') {
+      document.documentElement.dispatchEvent(new CustomEvent('kt-debug-sync'));
+      setTimeout(async () => {
+        let logs = '';
+        try {
+          const report = JSON.parse(document.documentElement.dataset.ktDebugReport || 'null');
+          if (report && Array.isArray(report.logs)) {
+            logs = report.logs
+              .slice(-20)
+              .map((x) => {
+                const ts = new Date(x.at || Date.now()).toISOString().slice(11, 19);
+                let detail = '';
+                try { detail = JSON.stringify(x.detail || {}); } catch (e) { detail = ''; }
+                return ts + ' ' + x.type + ' ' + detail.slice(0, 200);
+              })
+              .join('\n')
+              .slice(0, 3800);
+          }
+        } catch (e) { /* dataset 缺失就当没有日志 */ }
+        let uiLang = '';
+        try {
+          const items = await chrome.storage.local.get({ [SETTINGS_KEY]: null });
+          uiLang = (items[SETTINGS_KEY] && items[SETTINGS_KEY].uiLang) || '';
+        } catch (e) { /* 读不到就用空值 */ }
+        sendResponse({ ok: true, url: location.href, uiLang, logs });
+      }, 120);
+      return true; // 异步响应
+    }
     return false;
   });
 })();

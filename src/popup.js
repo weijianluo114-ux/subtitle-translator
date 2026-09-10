@@ -72,6 +72,7 @@ const I18N = {
     showNotifications: '操作通知',
     debug: '调试模式（开发用）',
     debugDownload: '下载诊断',
+    feedback: '反馈 / 建议',
     resetSettings: '重置设置',
     enabled: '启用整行字幕',
     manualCaptions: '手动字幕（创作者 CC）',
@@ -142,6 +143,7 @@ const I18N = {
     showNotifications: 'Show notifications',
     debug: 'Debug mode (dev)',
     debugDownload: 'Download diagnostic',
+    feedback: 'Feedback',
     resetSettings: 'Reset settings',
     enabled: 'Enable line captions',
     manualCaptions: 'Manual captions (creator CC)',
@@ -506,6 +508,10 @@ function bind() {
     } catch (e) {
       setStatus('获取失败：请刷新 YouTube 页面后重试（' + String((e && e.message) || e) + '）', true);
     }
+  });
+
+  $('feedback-open').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('feedback.html') });
   });
 
   const APPEARANCE_SCOPE = ['enabled','manualCaptions','targetLines','textSize','font','textColor','textOpacity','background','allCaps','textOutline','textBold','positionMode','position','posX','posY','captionWidth','widthPercent','tooltipFollowSubtitle','tooltip'];

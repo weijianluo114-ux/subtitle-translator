@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>反馈 · 字幕整行翻译</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 34px 18px 60px;
+    font-family: Roboto, "Noto Sans", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px; color: #1f1f1f; background: #f6f7fb;
+  }
+  .wrap {
+    max-width: 640px; margin: 0 auto; background: #fff;
+    border: 1px solid #e7e9f0; border-radius: 12px; padding: 22px 24px 26px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .04);
+  }
+  h1 { font-size: 18px; margin: 0 0 6px; }
+  .sub { color: #6b7280; font-size: 12.5px; margin-bottom: 20px; }
+  .label { font-weight: 600; margin: 0 0 8px; }
+  .cats { display: flex; gap: 10px; flex-wrap: wrap; }
+  .cat {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid #d8dbe6; border-radius: 8px; padding: 7px 12px;
+    cursor: pointer; user-select: none; transition: all .12s;
+  }
+  .cat input { margin: 0; }
+  .cat.on { border-color: #2563eb; background: #eef3ff; }
+  textarea {
+    width: 100%; min-height: 150px; resize: vertical; padding: 10px 12px;
+    border: 1px solid #d8dbe6; border-radius: 8px; font: inherit; line-height: 1.55;
+  }
+  textarea:focus { outline: none; border-color: #2563eb; }
+  .counter { text-align: right; color: #9aa1ad; font-size: 12px; margin-top: 4px; }
+  .diag { margin-top: 14px; display: flex; gap: 8px; align-items: flex-start; color: #374151; cursor: pointer; }
+  .diag small { color: #6b7280; display: block; margin-top: 3px; line-height: 1.5; }
+  .row { margin-top: 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  button {
+    font: inherit; border-radius: 8px; padding: 9px 18px;
+    border: 1px solid #2563eb; background: #2563eb; color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: #fff; color: #2563eb; border-color: #b9c8f2; }
+  button.ghost:hover { background: #eef3ff; }
+  #status { font-size: 13px; }
+  #status.err { color: #d93025; }
+  #status.ok { color: #15803d; }
+  .hint {
+    margin-top: 22px; padding-top: 14px; border-top: 1px solid #eef0f6;
+    color: #6b7280; font-size: 12px; line-height: 1.65;
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="t-title">反馈 / 建议</h1>
+  <div class="sub" id="t-sub">你的反馈会直接发给我，用来改进这个扩展。</div>
+
+  <div class="label" id="t-cat">类型</div>
+  <div class="cats">
+    <label class="cat on"><input type="radio" name="cat" value="bug" checked><span id="t-cat-bug">问题反馈</span></label>
+    <label class="cat"><input type="radio" name="cat" value="idea"><span id="t-cat-idea">功能建议</span></label>
+    <label class="cat"><input type="radio" name="cat" value="other"><span id="t-cat-other">其他</span></label>
+  </div>
+
+  <div class="label" id="t-content" style="margin-top:20px">内容</div>
+  <textarea id="content" maxlength="2000"></textarea>
+  <div class="counter"><span id="count">0</span> / 2000</div>
+
+  <label class="diag">
+    <input type="checkbox" id="diag">
+    <span>
+      <span id="t-diag">附上诊断信息（可选）</span>
+      <small id="t-diag-hint">包括扩展版本、浏览器版本、当前视频链接、最近 20 条调试日志。默认不勾选。</small>
+    </span>
+  </label>
+
+  <div class="row">
+    <button id="send" disabled>发送</button>
+    <button id="copy" class="ghost hidden">复制内容</button>
+    <span id="status"></span>
+  </div>
+
+  <div class="hint" id="t-hint">匿名发送：不收集任何身份信息。发送失败的反馈会暂存在本机，下次打开可重试。</div>
+</div>
+<script src="feedback.js"></script>
+</body>
+</html>
