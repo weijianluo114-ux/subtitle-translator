@@ -27,3 +27,7 @@ node_modules/
 
 # 内部技术文档（本地使用，不公开）
 /docs/
+
+# Cloudflare Worker 本地缓存与本地密钥文件（可能含敏感值）
+.wrangler/
+.dev.vars
