@@ -1,6 +1,6 @@
 /* 核心算法回归测试（Node 下模拟 DOM 运行 inject.js）
  * 运行：node tests/kt-core-test.mjs src/inject.js
- * 覆盖：分词 / 设置归一化 / 字幕解析（手动+自动+广播碎片）/ 分块（硬停顿、说话人、标点）/ 句子翻译单元（句末切分、短句合并、逗号截断、定位）
+ * 覆盖：分词 / 设置归一化 / 字幕解析（手动+自动+广播碎片）/ 分块（硬停顿、说话人、标点）/ 句子翻译单元（句末切分、短句合并、逗号截断、定位）/ 气泡挂载与孤儿清理
  */
 import fs from 'node:fs';
 import vm from 'node:vm';
@@ -178,6 +178,51 @@ assert(api.normalizeSettings({ textOpacity: 150 }).textOpacity === 100, '透明�
 assert(api.normalizeSettings({ textOpacity: -10 }).textOpacity === 0, '透明度 -10 → 0');
 assert(api.normalizeSettings({ textOpacity: 'abc' }).textOpacity === 100, '非法透明度回退 100');
 assert(api.normalizeSettings({ textOpacity: 75 }).textOpacity === 75, '旧值 75 仍合法');
+
+/* 14. 孤儿节点清理 + 挂载宿主跟随全屏（"多个气泡叠在一起"的根治逻辑） */
+const mkParent = (id, tag) => ({
+  id, tagName: tag, children: [],
+  appendChild(n) { n.parentNode = this; n.parentElement = this; this.children.push(n); return n; },
+  removeChild(n) { this.children = this.children.filter((c) => c !== n); n.parentNode = null; n.parentElement = null; return n; },
+});
+const mkNode = (id) => ({
+  id, isConnected: true, parentNode: null, parentElement: null,
+  style: {}, classList: { contains: () => false },
+  getBoundingClientRect: () => ({ left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300 }),
+});
+const fakeBody = mkParent('body', 'body');
+const fakeFs = mkParent('movie_player', 'div');
+ctx.document.body = fakeBody;
+ctx.document.fullscreenElement = fakeFs;
+ctx.document.getElementById = (id) => [...fakeFs.children, ...fakeBody.children].find((n) => n.id === id) || null;
+ctx.document.querySelectorAll = (sel) => {
+  const ids = String(sel).split(',').map((s) => s.trim().replace('#', ''));
+  return [...fakeFs.children, ...fakeBody.children].filter((n) => ids.indexOf(n.id) >= 0);
+};
+
+assert(api.tooltipHost() === fakeFs, '全屏时挂载宿主 = 全屏元素');
+ctx.document.fullscreenElement = null;
+assert(api.tooltipHost() === fakeBody, '非全屏时挂载宿主 = body');
+
+const keepNode = mkNode('kt-tooltip');
+const orphanNode = mkNode('kt-tooltip');
+api.STATE.tooltip = keepNode;
+fakeBody.appendChild(keepNode);
+fakeBody.appendChild(orphanNode);
+const purged = api.purgeOrphanNodes();
+assert(purged === 1, '清理掉 1 个孤儿气泡，got ' + purged);
+assert(fakeBody.children.length === 1 && fakeBody.children[0] === keepNode, '保留 STATE 正在用的气泡');
+assert(api.purgeOrphanNodes() === 0, '无孤儿时不再清理（幂等）');
+
+const moveNode = mkNode('kt-notification');
+ctx.document.fullscreenElement = fakeFs;
+api.mountOverlayNode(moveNode);
+assert(moveNode.parentElement === fakeFs, '全屏时节点挂到全屏元素');
+ctx.document.fullscreenElement = null;
+api.mountOverlayNode(moveNode);
+assert(moveNode.parentElement === fakeBody, '退出全屏后节点搬回 body（不重建）');
+api.mountOverlayNode(moveNode);
+assert(fakeBody.children.filter((c) => c === moveNode).length === 1, '重复挂载不会产生副本节点');
 
 console.log('\n==== ' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED') + ' ====');
 process.exit(failed === 0 ? 0 : 1);

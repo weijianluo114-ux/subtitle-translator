@@ -117,6 +117,7 @@
       lineLabel: '整句翻译',
       loading: '翻译中…',
       captionsFailed: '字幕加载失败',
+      resumeFailed: '翻译完成，请手动继续播放',
     },
     en: {
       translationFailed: 'Translation failed',
@@ -126,6 +127,7 @@
       lineLabel: 'Whole line',
       loading: 'Translating…',
       captionsFailed: 'Failed to load captions',
+      resumeFailed: 'Translation done — press play to continue',
     },
   };
   const t = (key) => (STR[STATE_SETTINGS().uiLang] || STR.en)[key] || key;
@@ -326,11 +328,32 @@
       lastTimedtextResponse: STATE.lastTimedtextResponse,
       lastCaptionTracks: STATE.lastCaptionTracks,
       caches: { word: STATE.wordCache.size, line: STATE.lineCache.size },
+      /* DOM 普查：页面上到底有几个气泡/通知（多窗堆叠只能靠这个字段证实） */
+      dom: {
+        overlay: countNodes('#kt-overlay'),
+        tooltip: countNodes('#kt-tooltip'),
+        notification: countNodes('#kt-notification'),
+        measurer: countNodes('#kt-measurer'),
+        tooltipVisible: countVisibleNodes('#kt-tooltip'),
+      },
+      video: (() => {
+        const v = findVideo();
+        if (!v) return null;
+        return {
+          paused: !!v.paused,
+          currentTime: Math.round(v.currentTime * 100) / 100,
+          duration: Math.round((v.duration || 0) * 100) / 100,
+          readyState: v.readyState,
+        };
+      })(),
       tooltip: {
         exists: !!STATE.tooltip,
-        visible: !!(STATE.tooltip && STATE.tooltip.style.visibility === 'visible'),
+        connected: !!(STATE.tooltip && STATE.tooltip.isConnected),
+        visible: !!(STATE.tooltip && (STATE.tooltip.style.visibility === 'visible' || STATE.tooltip.classList.contains('kt-visible'))),
         inBody: !!(STATE.tooltip && document.body.contains(STATE.tooltip)),
+        host: tooltipHost() === document.body ? 'body' : (tooltipHost().id || tooltipHost().tagName.toLowerCase()),
         parent: STATE.tooltip && STATE.tooltip.parentElement ? (STATE.tooltip.parentElement.id || STATE.tooltip.parentElement.tagName.toLowerCase()) : null,
+        stylePosition: STATE.tooltip ? (STATE.tooltip.style.position || '') : null,
       },
       pointer: {
         lastX: STATE.lastX,
@@ -368,7 +391,7 @@
       abortActiveRequests();
       STATE.hoverGen += 1;
       clearSelection(false);
-      hideTooltip();
+      hideTooltip('translation-off');
       pauseController.resume();
     }
 
@@ -485,6 +508,14 @@
     });
   }
 
+  /* 文本指纹：日志只存前 120 字符，靠 len + fp 才能判断"两次请求的文本是否真的相同" */
+  function textFingerprint(value) {
+    const s = String(value || '');
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+  }
+
   async function translateText(text, signal) {
     const raw = String(text || '').trim();
     if (!raw) return null;
@@ -495,7 +526,7 @@
     if (translatorKey === 'google') {
       const direct = await requestGoogleDirect(limited, STATE.settings.sourceLanguage, STATE.settings.targetLanguage);
       if (direct && direct.ok && direct.translatedText) {
-        debugLog('translate_ok', { path: 'direct', engine: 'google', text: limited.slice(0, 40) });
+        debugLog('translate_ok', { path: 'direct', engine: 'google', len: limited.length, fp: textFingerprint(limited), truncated: raw.length > limited.length, text: limited.slice(0, 120) });
         return {
           translatedText: direct.translatedText,
           detectedLanguageCode: direct.detectedLanguageCode || '',
@@ -515,7 +546,7 @@
       signal
     );
     if (!r || !r.ok) throw new Error((r && r.error) || 'translate-failed');
-    debugLog('translate_ok', { path: 'bridge', engine: r.engine || translatorKey, text: limited.slice(0, 40) });
+    debugLog('translate_ok', { path: 'bridge', engine: r.engine || translatorKey, len: limited.length, fp: textFingerprint(limited), truncated: raw.length > limited.length, text: limited.slice(0, 120) });
     return {
       translatedText: r.translatedText || '',
       detectedLanguageCode: r.detectedLanguageCode || '',
@@ -598,7 +629,11 @@
     const map = kind === 'word' ? STATE.wordCache : STATE.lineCache;
     const max = kind === 'word' ? CFG.wordCacheMax : CFG.lineCacheMax;
     const hit = cacheGet(map, text);
-    if (hit) return hit;
+    if (hit) {
+      debugLog('cache_hit', { kind, len: String(text || '').length, fp: textFingerprint(text) });
+      return hit;
+    }
+    debugLog('cache_miss', { kind, len: String(text || '').length, fp: textFingerprint(text), text: String(text || '').slice(0, 120) });
     const data = await translateText(text, signal);
     if (!data || !data.translatedText) return null;
     const entry = {
@@ -1701,7 +1736,7 @@
       abortActiveRequests();
       STATE.hoverGen += 1;
       clearSelection(false);
-      hideTooltip();
+      hideTooltip('chunk-switch');
     }
 
     if (STATE.overlayText) {
@@ -1742,6 +1777,8 @@
   }
 
   function checkPointerState() {
+    // 自愈：任何时刻页面上只允许存在一个气泡 / 一个通知，断链节点直接丢弃
+    selfHealOverlayNodes();
     const el = elementFromPointOnWord();
     if (el) {
       // Shift 拖选：指针扫过的每个词都并入选区（快速拖动也不漏词）
@@ -1749,7 +1786,7 @@
       return;
     }
     if (STATE.lastX == null || STATE.lastY == null) return; // 位置未知
-    const tooltipVisible = STATE.tooltip && STATE.tooltip.style.visibility === 'visible';
+    const tooltipVisible = !!(STATE.tooltip && (STATE.tooltip.style.visibility === 'visible' || STATE.tooltip.classList.contains('kt-visible')));
     if (tooltipVisible || pauseController.claimedVideo) {
       onSubtitleLeave();
     }
@@ -1771,16 +1808,15 @@
   function handleFullscreenChange() {
     debugLog('fullscreen_change', {
       fullscreen: !!document.fullscreenElement,
-      tooltipVisible: !!(STATE.tooltip && STATE.tooltip.style.visibility === 'visible'),
+      host: tooltipHost() === document.body ? 'body' : (tooltipHost().id || tooltipHost().tagName.toLowerCase()),
+      tooltipVisible: !!(STATE.tooltip && (STATE.tooltip.style.visibility === 'visible' || STATE.tooltip.classList.contains('kt-visible'))),
+      tooltipNodes: countNodes('#kt-tooltip'),
       claimedVideo: !!pauseController.claimedVideo,
       lastX: STATE.lastX,
       lastY: STATE.lastY,
     });
     onSubtitleLeave();
-    if (!document.fullscreenElement && STATE.tooltip && document.body.contains(STATE.tooltip) && STATE.tooltip.parentElement !== document.body) {
-      // 气泡原先挂在全屏播放器节点上，退出全屏后移回 body，避免悬挂在异常容器
-      document.body.appendChild(STATE.tooltip);
-    }
+    relocateOverlayNodes();
   }
 
   /* ============================ 悬停 / 选择 / 气泡 ============================ */
@@ -1893,14 +1929,106 @@
     abortActiveRequests();
     STATE.hoverGen += 1;
     clearSelection(false);
-    hideTooltip();
+    hideTooltip('leave');
+    purgeOrphanNodes(); // 离开字幕时把不属于当前状态的气泡/通知一并清掉（多窗堆叠根治）
     pauseController.resume();
   }
 
   /* ---- 气泡 ---- */
 
+  /* 气泡必须挂到"当前真正会被绘制的容器"：全屏时浏览器只绘制全屏元素（top layer），
+     挂在 body 里的节点视觉上不会出现，退出全屏时又会"自己冒出来"。 */
+  function tooltipHost() {
+    return document.fullscreenElement || document.body;
+  }
+
+  function hostName(host) {
+    return host === document.body ? 'body' : (host.id || host.tagName.toLowerCase());
+  }
+
+  /* 幂等挂载：同一个节点只搬移、不重建（重建会让旧节点变成没人管的孤儿 → 多个气泡叠在一起） */
+  function mountOverlayNode(node) {
+    if (!node) return;
+    const host = tooltipHost();
+    if (node.parentElement === host) return;
+    host.appendChild(node);
+    debugLog('node_mount', { id: node.id, host: hostName(host) });
+  }
+
+  /* 气泡用 absolute + 文档坐标（跟随页面滚动）；挂到全屏容器里则用 fixed + 视口坐标 */
+  function applyPositionMode(node) {
+    if (tooltipHost() === document.body) {
+      node.style.position = 'absolute';
+      return { x: window.scrollX, y: window.scrollY };
+    }
+    node.style.position = 'fixed';
+    return { x: 0, y: 0 };
+  }
+
+  /* 孤儿节点：页面上存在、但不是 STATE 正在用的那一个（多窗堆叠的根治手段） */
+  function hasOrphanNodes() {
+    /* 用节点计数判断，不能用 getElementById（它返回文档序第一个，可能在 STATE 节点之后） */
+    const tipAllowed = STATE.tooltip && STATE.tooltip.isConnected !== false ? 1 : 0;
+    if (countNodes('#kt-tooltip') > tipAllowed) return true;
+    const noteAllowed = STATE.notification && STATE.notification.isConnected !== false ? 1 : 0;
+    if (countNodes('#kt-notification') > noteAllowed) return true;
+    return false;
+  }
+
+  function purgeOrphanNodes() {
+    if (!hasOrphanNodes()) return 0;
+    let removed = 0;
+    for (const el of Array.from(document.querySelectorAll('#kt-tooltip, #kt-notification'))) {
+      if (el === STATE.tooltip || el === STATE.notification) continue;
+      if (el.parentNode) el.parentNode.removeChild(el);
+      removed += 1;
+    }
+    if (removed) debugLog('orphan_purged', { removed });
+    return removed;
+  }
+
+  function countNodes(sel) {
+    try { return document.querySelectorAll(sel).length; } catch (e) { return -1; }
+  }
+
+  function countVisibleNodes(sel) {
+    try {
+      let n = 0;
+      for (const el of document.querySelectorAll(sel)) {
+        if (el.style.visibility === 'visible' || el.classList.contains('kt-visible')) n += 1;
+      }
+      return n;
+    } catch (e) { return -1; }
+  }
+
+  /* 全屏进出后：把气泡/通知搬到"当前会渲染的容器"里，并清掉孤儿 */
+  function relocateOverlayNodes() {
+    purgeOrphanNodes();
+    mountOverlayNode(STATE.tooltip);
+    mountOverlayNode(STATE.notification);
+  }
+
+  /* 看门狗每 100ms 顺带自愈：孤儿节点删掉，断链节点丢弃（无需知道它们是怎么产生的） */
+  function selfHealOverlayNodes() {
+    purgeOrphanNodes();
+    if (STATE.tooltip && STATE.tooltip.isConnected === false) {
+      STATE.tooltip = null;
+      debugLog('tooltip_dropped', { reason: 'disconnected' });
+    }
+    if (STATE.notification && STATE.notification.isConnected === false) STATE.notification = null;
+  }
+
   function ensureTooltip() {
-    if (STATE.tooltip && document.body.contains(STATE.tooltip)) return;
+    purgeOrphanNodes();
+    if (STATE.tooltip) {
+      if (STATE.tooltip.isConnected !== false) {
+        mountOverlayNode(STATE.tooltip);
+        return;
+      }
+      /* 断链节点直接删掉再重建，绝不允许留下画面上还在的旧气泡 */
+      if (STATE.tooltip.parentNode) STATE.tooltip.parentNode.removeChild(STATE.tooltip);
+      STATE.tooltip = null;
+    }
     const box = document.createElement('div');
     box.id = 'kt-tooltip';
     const word = document.createElement('div');
@@ -1915,8 +2043,9 @@
     box.appendChild(meta);
     box.appendChild(label);
     box.appendChild(line);
-    (document.fullscreenElement || document.body).appendChild(box);
+    mountOverlayNode(box);
     STATE.tooltip = box;
+    debugLog('tooltip_create', { host: hostName(tooltipHost()), n: countNodes('#kt-tooltip') });
   }
 
   function tooltipSection(name) {
@@ -2005,31 +2134,33 @@
     const vr = video.getBoundingClientRect();
     const or = overlay.getBoundingClientRect();
     const anchor = STATE.activeWord ? STATE.activeWord.getBoundingClientRect() : null;
+    const off = applyPositionMode(box);
     box.style.visibility = 'hidden';
     box.style.maxWidth = Math.max(180, vr.width - CFG.tooltipMargin * 2) + 'px';
     const tw = box.offsetWidth;
     const th = box.offsetHeight;
-    let left = (anchor ? anchor.left : or.left + or.width / 2) + window.scrollX;
-    left = Math.min(left, vr.right - tw - CFG.tooltipMargin + window.scrollX);
-    left = Math.max(left, vr.left + CFG.tooltipMargin + window.scrollX);
+    let left = (anchor ? anchor.left : or.left + or.width / 2) + off.x;
+    left = Math.min(left, vr.right - tw - CFG.tooltipMargin + off.x);
+    left = Math.max(left, vr.left + CFG.tooltipMargin + off.x);
     box.style.left = left + 'px';
     const overlayCenter = or.top + or.height / 2;
     const videoCenter = vr.top + vr.height / 2;
     if (overlayCenter <= videoCenter) {
-      box.style.top = (or.bottom + CFG.tooltipGap + window.scrollY) + 'px';
+      box.style.top = (or.bottom + CFG.tooltipGap + off.y) + 'px';
     } else {
-      box.style.top = Math.max(vr.top + window.scrollY, or.top - th - CFG.tooltipGap + window.scrollY) + 'px';
+      box.style.top = Math.max(vr.top + off.y, or.top - th - CFG.tooltipGap + off.y) + 'px';
     }
     /* 关键：用内联样式显式置为可见（内联优先级高于 class，反过来写会永远不可见） */
     box.style.visibility = 'visible';
     box.classList.add('kt-visible');
   }
 
-  function hideTooltip() {
-    if (STATE.tooltip) {
-      STATE.tooltip.style.visibility = 'hidden';
-      STATE.tooltip.classList.remove('kt-visible');
-    }
+  function hideTooltip(reason) {
+    if (!STATE.tooltip) return;
+    const wasVisible = STATE.tooltip.style.visibility === 'visible' || STATE.tooltip.classList.contains('kt-visible');
+    STATE.tooltip.style.visibility = 'hidden';
+    STATE.tooltip.classList.remove('kt-visible');
+    if (wasVisible) debugLog('tooltip_hide', { reason: reason || 'unspecified' });
   }
 
   function scheduleTooltip() {
@@ -2185,23 +2316,30 @@
 
   function showNotification(text, isError) {
     if (!STATE.settings.showNotifications && !isError) return;
-    if (!STATE.notification || !document.body.contains(STATE.notification)) {
-      const n = document.createElement('div');
+    purgeOrphanNodes();
+    let n = STATE.notification;
+    if (n && n.isConnected === false) {
+      if (n.parentNode) n.parentNode.removeChild(n);
+      n = null;
+    }
+    if (!n) {
+      n = document.createElement('div');
       n.id = 'kt-notification';
-      (document.fullscreenElement || document.body).appendChild(n);
       STATE.notification = n;
     }
+    mountOverlayNode(n);
     const video = findVideo();
-    STATE.notification.textContent = text;
-    STATE.notification.classList.add('kt-visible');
+    n.textContent = text;
+    n.classList.add('kt-visible');
     if (video) {
       const r = video.getBoundingClientRect();
-      STATE.notification.style.left = (r.left + 65) + 'px';
-      STATE.notification.style.top = (r.top + 40) + 'px';
+      const off = applyPositionMode(n);
+      n.style.left = (r.left + off.x + 65) + 'px';
+      n.style.top = (r.top + off.y + 40) + 'px';
     }
-    clearTimeout(STATE.notification.timer);
-    STATE.notification.timer = setTimeout(() => {
-      STATE.notification.classList.remove('kt-visible');
+    clearTimeout(n.timer);
+    n.timer = setTimeout(() => {
+      n.classList.remove('kt-visible');
     }, CFG.notificationMs);
   }
 
@@ -2210,18 +2348,43 @@
   const pauseController = {
     claimedVideo: null,
     onExternalPlay: null,
+    resumePending: false,
     pause() {
       if (!STATE.settings.translationEnabled || !STATE.settings.autoPause) return;
       const video = findVideo();
       if (!video || video.paused) return;
       video.pause();
       this.claim(video);
+      debugLog('pause_claim', { t: Math.round(video.currentTime * 100) / 100 });
     },
+    /* 关键：先确认 play() 成功再释放 claim；失败必须记日志 + 提示，
+       否则 claim 已丢、没人再恢复播放 —— 视频会永久卡在暂停。 */
     resume() {
       const video = this.claimedVideo;
       if (!video) return;
-      this.release();
-      video.play().catch(() => { /* 自动播放策略拒绝就保持暂停 */ });
+      if (!video.paused || this.resumePending) {
+        this.release();
+        return;
+      }
+      this.resumePending = true;
+      let p = null;
+      try { p = video.play(); } catch (e) { p = null; }
+      if (!p || typeof p.then !== 'function') {
+        this.resumePending = false;
+        this.release();
+        debugLog('pause_resume', { ok: true, mode: 'sync' });
+        return;
+      }
+      p.then(() => {
+        this.resumePending = false;
+        this.release();
+        debugLog('pause_resume', { ok: true });
+      }).catch(() => {
+        this.resumePending = false;
+        this.release();
+        debugLog('pause_resume_failed', { t: Math.round(video.currentTime * 100) / 100 });
+        showNotification(t('resumeFailed'), true);
+      });
     },
     claim(video) {
       this.release();
@@ -2235,9 +2398,6 @@
       }
       this.claimedVideo = null;
       this.onExternalPlay = null;
-    },
-    destroy() {
-      this.release();
     },
   };
 
@@ -2501,7 +2661,7 @@
     cancelHoverTimer();
     abortActiveRequests();
     clearSelection(false);
-    hideTooltip();
+    hideTooltip('teardown');
     pauseController.resume();
     if (document.head.contains(captionHideStyle)) document.head.removeChild(captionHideStyle);
   }
@@ -2562,7 +2722,7 @@
     if (STATE.overlay && STATE.overlay.parentNode) STATE.overlay.parentNode.removeChild(STATE.overlay);
     if (STATE.measurer && STATE.measurer.parentNode) STATE.measurer.parentNode.removeChild(STATE.measurer);
     if (document.head.contains(captionHideStyle)) document.head.removeChild(captionHideStyle);
-    pauseController.destroy();
+    pauseController.resume(); // 换视频前把"悬停暂停"的 claim 恢复掉（原来只 release，视频会卡在暂停）
     STATE.pollId = null;
     STATE.overlay = null;
     STATE.overlayText = null;
@@ -2607,7 +2767,13 @@
     cancelHoverTimer();
     abortActiveRequests();
     clearSelection(false);
-    hideTooltip();
+    hideTooltip('reset');
+    if (STATE.notification) {
+      clearTimeout(STATE.notification.timer);
+      if (STATE.notification.parentNode) STATE.notification.parentNode.removeChild(STATE.notification);
+      STATE.notification = null;
+    }
+    purgeOrphanNodes();
     STATE.hoverGen += 1;
   }
 
@@ -2681,6 +2847,9 @@
     buildSentenceUnits,
     assembleTranslationUnits,
     findTranslationUnit,
+    purgeOrphanNodes,
+    mountOverlayNode,
+    tooltipHost,
     STATE,
   };
 })();

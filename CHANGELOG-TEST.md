@@ -14,6 +14,32 @@
 
 ---
 
+## 0.3.2 — 2026-09-16
+
+**开发中，未上架。** 分支 `test`。对应 `docs/15-Bug追踪与排查记录.md` 的 **Bug #001**（悬停气泡不消失 / 多个气泡叠在一起 / 卡顿）。
+
+### 修复
+
+- **气泡/通知节点生命周期（多窗叠堆的根治）**：
+  - 新增 `purgeOrphanNodes()`：页面上出现不属于当前状态的气泡/通知（孤儿节点）时直接删除；`ensureTooltip()`、`showNotification()`、`onSubtitleLeave()`、全屏切换、`resetForNewVideo()` 都会调用。
+  - 存活判断由 `document.body.contains()` 改为 `isConnected !== false` + **幂等搬移**（`mountOverlayNode()`）：节点只搬移、不重建，不再出现"旧节点留在画面上没人管"的情况；断链节点直接删除后重建。
+  - 新增 `selfHealOverlayNodes()`：指针看门狗每 100ms 顺带自愈（删孤儿、丢弃断链节点）。
+- **全屏进出（`handleFullscreenChange`）**：改为统一的 `relocateOverlayNodes()`——全屏时气泡/通知挂到全屏元素下（原本挂在 `body` 里的节点在全屏时**根本不会渲染**，退出全屏又会"自己冒出来"），退出全屏搬回 `body`；同时把全屏宿主写入 `fullscreen_change` 日志。
+- **气泡定位**：新增 `applyPositionMode()`——挂 `body` 时用 `absolute` + 文档坐标（跟随滚动，行为不变），挂全屏容器时用 `fixed` + 视口坐标，避免坐标基准错位。
+- **暂停控制器 `pauseController.resume()`**：改为 **`play()` 成功后**才释放 claim；失败时记 `pause_resume_failed` 日志并弹提示（`resumeFailed`），不再出现"claim 已丢、视频永久卡在暂停且无提示"；新增 `resumePending` 防重入。换视频（`resetForNewVideo`）由 `destroy()`（只 release）改为 `resume()`（真正恢复播放）。
+- **看门狗可见性判据**：`checkPointerState()` / 全屏日志由"仅看内联 `style.visibility`"改为"内联 visible 或带 `kt-visible` class"，避免只加了 class 的气泡永远不被清理。
+
+### 变更
+
+- **诊断报告（`buildDebugReport`）新增字段**：`dom{overlay,tooltip,notification,measurer,tooltipVisible}`（DOM 普查）、`video{paused,currentTime,duration,readyState}`、`tooltip{connected,host,stylePosition,...}`。
+- **新增日志事件**：`tooltip_create` / `tooltip_hide{reason}` / `node_mount` / `orphan_purged{n}` / `tooltip_dropped` / `pause_claim` / `pause_resume` / `pause_resume_failed` / `cache_hit` / `cache_miss`。
+- **翻译日志不再截断到 40 字符**：`translate_ok` / `translate_error` / `cache_miss` 记录 `len + fp(文本指纹) + 前 120 字符`，用于判断"同一整句短时间内多次走网络"是文本不同（正常）还是缓存未命中（bug）。
+
+### 文档
+
+- 新增 `docs/15-Bug追踪与排查记录.md`（本地私有）：Bug #001 完整排查过程 + Bug #002（全屏残留，`b19885e`）归档 + 编号规范 + "气泡类已知坑"清单。
+- `tests/kt-core-test.mjs` 新增 6 条断言（挂载宿主跟随全屏、孤儿清理保留当前节点、幂等、搬移不产生副本）。
+
 ## 0.3.1 — 2026-09-11
 
 **开发中，未上架。** 分支 `test`。
