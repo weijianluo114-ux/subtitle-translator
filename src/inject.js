@@ -195,7 +195,7 @@
     pick('posX', null, (v) => num(v, 0, 100));
     pick('posY', null, (v) => num(v, 0, 100));
     pick('textColor', ['white', 'yellow', 'green', 'cyan']);
-    pick('textOpacity', null, (v) => ([100, 75, 50].includes(Number(v)) ? Number(v) : null));
+    pick('textOpacity', null, (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n / 5) * 5)) : null; });
     pick('captionWidth', ['auto', 'third', 'half', 'twothirds', 'custom']);
     pick('widthPercent', null, (v) => num(v, 10, 100));
     pick('allCaps', null, bool);

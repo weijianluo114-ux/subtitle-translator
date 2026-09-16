@@ -172,5 +172,12 @@ assert(api.findTranslationUnit(5) === api.STATE.translationUnits[1], '二分定�
 assert(api.findTranslationUnit(-1) === null, '负下标返回 null');
 assert(api.findTranslationUnit(99) === null, '越界大下标返回 null');
 
+/* 13. 文字透明度归一化（0–100，步进 5） */
+assert(api.normalizeSettings({ textOpacity: 37 }).textOpacity === 35, '透明度 37 → 35，got ' + api.normalizeSettings({ textOpacity: 37 }).textOpacity);
+assert(api.normalizeSettings({ textOpacity: 150 }).textOpacity === 100, '透明度 150 → 100');
+assert(api.normalizeSettings({ textOpacity: -10 }).textOpacity === 0, '透明度 -10 → 0');
+assert(api.normalizeSettings({ textOpacity: 'abc' }).textOpacity === 100, '非法透明度回退 100');
+assert(api.normalizeSettings({ textOpacity: 75 }).textOpacity === 75, '旧值 75 仍合法');
+
 console.log('\n==== ' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED') + ' ====');
 process.exit(failed === 0 ? 0 : 1);

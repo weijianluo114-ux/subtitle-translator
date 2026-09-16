@@ -232,7 +232,7 @@ function normalizeSettings(raw) {
   pick('posX', null, (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null; });
   pick('posY', null, (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null; });
   pick('textColor', ['white', 'yellow', 'green', 'cyan']);
-  pick('textOpacity', [100, 75, 50], (v) => ([100, 75, 50].includes(Number(v)) ? Number(v) : null));
+  pick('textOpacity', null, (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n / 5) * 5)) : null; });
   pick('captionWidth', ['auto', 'third', 'half', 'twothirds', 'custom']);
   pick('widthPercent', null, (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(10, Math.min(100, n)) : null; });
   pick('allCaps', [true, false], (v) => (typeof v === 'boolean' ? v : null));
@@ -285,6 +285,7 @@ function render() {
   $('font').value = settings.font;
   $('text-color').value = settings.textColor;
   $('text-opacity').value = String(settings.textOpacity);
+  $('text-opacity-value').textContent = settings.textOpacity + '%';
   $('background').value = String(settings.background);
   $('all-caps').checked = settings.allCaps;
   $('text-outline').checked = settings.textOutline;
@@ -389,7 +390,11 @@ function bind() {
   bindSel('text-size', () => { settings.textSize = $('text-size').value; });
   bindSel('font', () => { settings.font = $('font').value; });
   bindSel('text-color', () => { settings.textColor = $('text-color').value; });
-  bindSel('text-opacity', () => { settings.textOpacity = Number($('text-opacity').value); });
+  $('text-opacity').addEventListener('input', () => {
+    settings.textOpacity = Number($('text-opacity').value);
+    $('text-opacity-value').textContent = settings.textOpacity + '%';
+    save();
+  });
   bindSel('background', () => { settings.background = Number($('background').value); });
   bindCheck('all-caps', () => { settings.allCaps = $('all-caps').checked; });
   bindCheck('text-outline', () => { settings.textOutline = $('text-outline').checked; });
