@@ -224,5 +224,74 @@ assert(moveNode.parentElement === fakeBody, '退出全屏后节点搬回 body（
 api.mountOverlayNode(moveNode);
 assert(fakeBody.children.filter((c) => c === moveNode).length === 1, '重复挂载不会产生副本节点');
 
+/* ================= 15. 音标：页面侧纯函数 ================= */
+console.log('\n-- 音标（页面侧纯函数）--');
+assert(api.isEnglishToken('sentiment') === true, 'isEnglishToken: 普通英文词');
+assert(api.isEnglishToken("ain't") === true, 'isEnglishToken: 缩写词');
+assert(api.isEnglishToken('well-known') === true, 'isEnglishToken: 连字符词');
+assert(api.isEnglishToken('情绪') === false, 'isEnglishToken: 中文不算英文');
+assert(api.isEnglishToken('Hello!') === false, 'isEnglishToken: 带标点不算（由查表前归一化处理）');
+assert(api.ipaLookupKey('  Sentiment. ') === 'sentiment', 'ipaLookupKey: 去空格/大写/尾标点');
+assert(api.ipaLookupKey('“Hello”') === 'hello', 'ipaLookupKey: 去中文引号');
+assert(api.formatPhonetic(['ˈsentəmənt']) === '/ˈsentəmənt/', 'formatPhonetic: 单个读音加斜杠');
+assert(api.formatPhonetic(['lɪv', 'laɪv', 'x']) === '/lɪv/ /laɪv/', 'formatPhonetic: 最多显示 2 个读音');
+assert(api.formatPhonetic([]) === '' && api.formatPhonetic(null) === '', 'formatPhonetic: 空输入返回空串');
+
+/* ================= 16. 音标：后台离线词典查表（含回退与注释行） ================= */
+console.log('\n-- 音标（后台查表）--');
+const bgCode = fs.readFileSync(new URL('../src/background.js', import.meta.url), 'utf8');
+const FAKE_TSV = '# 注释行应被跳过\nthe\tðə;ði\nread\triːd;red\nknown\tnoʊn\nsentiment\tˈsentəmənt\n';
+let bgListener = null;
+const bgCtx = vm.createContext({
+  console,
+  URLSearchParams,
+  AbortController,
+  setTimeout,
+  clearTimeout,
+  fetch: async () => ({ text: async () => FAKE_TSV }),
+  chrome: {
+    runtime: {
+      getURL: (p) => 'chrome-extension://fake/' + p,
+      onMessage: { addListener: (fn) => { bgListener = fn; } },
+      onInstalled: { addListener: () => {} },
+      lastError: null,
+    },
+    tabs: { query: async () => [] },
+    scripting: { executeScript: async () => {} },
+    storage: { local: { get: () => {}, set: () => {} }, onChanged: { addListener: () => {} } },
+  },
+});
+vm.runInContext(bgCode, bgCtx);
+assert(typeof bgListener === 'function', '后台注册了 onMessage 监听');
+
+const ipaResp = await new Promise((resolve) => {
+  const ret = bgListener({ action: 'kt-ipa-lookup', words: ['The', 'read', 'well-known', 'zzz'] }, {}, resolve);
+  assert(ret === true, 'kt-ipa-lookup 返回 true（异步响应）');
+});
+assert(ipaResp.ok === true, 'kt-ipa-lookup 返回 ok');
+assert(JSON.stringify(ipaResp.ipa['The']) === JSON.stringify(['ðə', 'ði']), '查表：The → /ðə/ /ði/（大小写归一）');
+assert(JSON.stringify(ipaResp.ipa['read']) === JSON.stringify(['riːd', 'red']), '查表：read → 两个读音');
+assert(JSON.stringify(ipaResp.ipa['well-known']) === JSON.stringify(['noʊn']), '查表：well-known 回退到连字符末段');
+assert(ipaResp.ipa['zzz'] === undefined, '查表：未命中不返回条目');
+assert(ipaResp.size === 4, '查表：TSV 注释行被跳过（4 个词条），got ' + ipaResp.size);
+
+/* ================= 17. 音标：内置数据文件自检 ================= */
+console.log('\n-- 音标（内置数据文件）--');
+const tsvLines = fs.readFileSync(new URL('../src/data/ipa-en.tsv', import.meta.url), 'utf8')
+  .split('\n').filter((l) => l && l[0] !== '#');
+assert(tsvLines.length > 100000, '音标词典词条数 > 100000，got ' + tsvLines.length);
+const findIpa = (w) => {
+  const hit = tsvLines.find((l) => l.startsWith(w + '\t'));
+  return hit ? hit.split('\t')[1] : '';
+};
+assert(findIpa('additional').startsWith('əˈdɪʃənəl'), 'additional → /əˈdɪʃənəl/，got ' + findIpa('additional'));
+assert(findIpa('beautiful').startsWith('ˈbjuːtəfəl'), 'beautiful → /ˈbjuːtəfəl/，got ' + findIpa('beautiful'));
+assert(findIpa('well-known').startsWith('ˌwelˈnoʊn'), 'well-known → /ˌwelˈnoʊn/，got ' + findIpa('well-known'));
+assert(findIpa('live').split(';')[0] === 'ˈlɪv', 'live 首选 /ˈlɪv/（常用读音优先表），got ' + findIpa('live'));
+assert(findIpa('read').split(';')[0] === 'ˈriːd', 'read 首选 /ˈriːd/（常用读音优先表），got ' + findIpa('read'));
+assert(findIpa('was').split(';')[0] === 'wəz', 'was 首选 /wəz/（常用读音优先表），got ' + findIpa('was'));
+assert(findIpa('record').split(';')[0] === 'ˈrekərd', 'record 首选 /ˈrekərd/（常用读音优先表），got ' + findIpa('record'));
+assert(!/\n/.test(findIpa('sentiment')), 'sentiment 音标不含换行（数据格式干净）');
+
 console.log('\n==== ' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED') + ' ====');
 process.exit(failed === 0 ? 0 : 1);

@@ -14,6 +14,38 @@
 
 ---
 
+## 0.3.3 — 2026-09-18
+
+**开发中，未上架。** 分支 `test`。对应 `docs/16-功能设计-音标与注音.md`（去掉拼音 + 内置离线 IPA 音标）。
+
+### 新增
+
+- **内置离线英文音标词典**：`src/data/ipa-en.tsv`（125,909 词条 / 134,996 读音，由 CMUdict 经 `tools/make_ipa_dict.py` 转成美式 IPA，含常用读音优先表）。
+  - 气泡新增音标行（`.kt-tooltip-phonetic`，淡色小字），格式 `/ˈsentəmənt/`，多音词最多显示 2 个读音。
+  - 查询链路：`inject.js`（MAIN）→ `kt-ipa-request` → `storage-bridge.js`（ISOLATED）→ 后台 `kt-ipa-lookup`（懒加载 TSV → Map）→ `kt-ipa-response`；页面侧 LRU 3000（`STATE.ipaCache`）+ 字幕块渲染时批量预取（`prefetchIpaForChunk`）。
+  - **不新增任何权限、不新增任何网络请求**：音标纯本地查表。
+- 弹窗「外观 → 翻译气泡」新增 **「显示音标」开关**（设置键 `showPhonetic`，默认开；关掉则不显示音标行、也不再预取）。
+
+### 修复
+
+- **气泡不再显示拼音**：此前 meta 行把 Google `sentences[].translit`（目标语言罗马化，如 `Qíngxù`）拼在最前面；现 meta 行只保留「解释」（Google `dict` 词条）。
+- **音标不再使用 Google 的 respelling**：实测 Google `sentences[].src_translit` 不是词典音标（`additional → əˈdiSHənl`、`would → wo͝od`、`live → liv`，read/record/短语/整句常为空，16 词仅约 31% 可用），故英文词元一律改用内置词典；查不到时**不显示音标行**（不回退 Google，避免再次出现错误音标）。
+
+### 变更
+
+- 非英文词元（中文/日文源等）仍显示翻译接口返回的**源语言罗马化**（`data.transcription`），为空则不显示。
+- 多选/短语（含空格的选择）不显示音标行，仅单个词显示。
+- 诊断报告新增 `phonetic{enabled, cached, last{word, ipa, source}}` 字段，便于核对音标来源与命中。
+- 隐私政策补充说明：音标使用内置离线词典，不联网、不发送数据（`PRIVACY.md` §3 中英双语；生效日期改为 2026-09-18）。
+
+### 文档
+
+- 新增 `docs/16-功能设计-音标与注音.md`（根因证据、转换规则、数据流、改动清单、验收清单）。
+- `src/THIRD_PARTY_NOTICES.md` 新增「内置离线音标词典」小节，并随包保留 `src/data/CMUDICT-LICENSE.txt`（BSD-2-Clause 全文）。
+- 版本号 `src/manifest.json` → **0.3.3**。
+
+---
+
 ## 0.3.2 — 2026-09-16
 
 **开发中，未上架。** 分支 `test`。对应 `docs/15-Bug追踪与排查记录.md` 的 **Bug #001**（悬停气泡不消失 / 多个气泡叠在一起 / 卡顿）。

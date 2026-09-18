@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   showNotifications: true,
   sentenceTranslation: true,
   translationEnabled: true,
+  showPhonetic: true,
   tooltipFollowSubtitle: true,
   tooltip: {
     fontFamily: 'auto',
@@ -62,6 +63,7 @@ const I18N = {
     targetLanguage: '目标语言',
     autoDetect: '自动检测',
     sentenceTranslation: '整句翻译（悬停时显示整行译文）',
+    showPhonetic: '显示音标（内置离线词典）',
     translationEnabled: '启用翻译功能（悬停/整句/暂停/复制）',
     autoPause: '悬停时自动暂停视频',
     leftClickAction: '左键点击单词',
@@ -133,6 +135,7 @@ const I18N = {
     targetLanguage: 'To',
     autoDetect: 'Auto detect',
     sentenceTranslation: 'Whole-line translation on hover',
+    showPhonetic: 'Show phonetics (built-in offline dictionary)',
     translationEnabled: 'Enable translation (hover/line/pause/copy)',
     autoPause: 'Auto-pause video on hover',
     leftClickAction: 'Left click on word',
@@ -249,6 +252,7 @@ function normalizeSettings(raw) {
   pick('sentenceTranslation', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('translationEnabled', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('tooltipFollowSubtitle', [true, false], (v) => (typeof v === 'boolean' ? v : null));
+  pick('showPhonetic', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   if (src.tooltip && typeof src.tooltip === 'object') {
     const tk = ['fontFamily','fontSize','fontColor','fontOpacity','backgroundColor','backgroundOpacity','characterEdgeStyle','textBold'];
     for (const k of tk) {
@@ -271,6 +275,7 @@ function render() {
   $('source-language').value = settings.sourceLanguage;
   $('target-language').value = settings.targetLanguage;
   $('sentence-translation').checked = settings.sentenceTranslation;
+  $('show-phonetic').checked = settings.showPhonetic !== false;
   $('translation-enabled').checked = settings.translationEnabled;
   $('auto-pause').checked = settings.autoPause;
   $('left-click-action').value = settings.leftClickAction;
@@ -377,6 +382,7 @@ function bind() {
   bindSel('source-language', () => { settings.sourceLanguage = $('source-language').value; });
   bindSel('target-language', () => { settings.targetLanguage = $('target-language').value; });
   bindCheck('sentence-translation', () => { settings.sentenceTranslation = $('sentence-translation').checked; });
+  bindCheck('show-phonetic', () => { settings.showPhonetic = $('show-phonetic').checked; });
   bindCheck('translation-enabled', () => { settings.translationEnabled = $('translation-enabled').checked; });
   bindCheck('auto-pause', () => { settings.autoPause = $('auto-pause').checked; });
   bindSel('left-click-action', () => { settings.leftClickAction = $('left-click-action').value; });
@@ -519,7 +525,7 @@ function bind() {
     chrome.tabs.create({ url: chrome.runtime.getURL('feedback.html') });
   });
 
-  const APPEARANCE_SCOPE = ['enabled','manualCaptions','targetLines','textSize','font','textColor','textOpacity','background','allCaps','textOutline','textBold','positionMode','position','posX','posY','captionWidth','widthPercent','tooltipFollowSubtitle','tooltip'];
+  const APPEARANCE_SCOPE = ['enabled','manualCaptions','targetLines','textSize','font','textColor','textOpacity','background','allCaps','textOutline','textBold','positionMode','position','posX','posY','captionWidth','widthPercent','showPhonetic','tooltipFollowSubtitle','tooltip'];
   $('reset-appearance').addEventListener('click', () => {
     for (const k of APPEARANCE_SCOPE) settings[k] = deepClone(DEFAULT_SETTINGS[k]);
     render();

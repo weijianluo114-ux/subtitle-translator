@@ -1,7 +1,7 @@
 # 隐私政策 / Privacy Policy（完整版）
 
 **适用产品**：字幕整行翻译 / Subtitle Line Translator（Chrome 扩展）
-**生效日期 / Last updated**：2026-09-11
+**生效日期 / Last updated**：2026-09-18
 
 ---
 
@@ -22,6 +22,8 @@
 - **Google Translate**（translate.googleapis.com / translate.google.com）——默认引擎；
 - **Bing Translator**（www.bing.com）——用户选择或 Google 不可用时的兜底；
 - **MyMemory**（api.mymemory.translated.net）——前两者均不可达时的最后兜底。
+
+**英文音标**：使用**内置于扩展的离线词典**（CMUdict 转换产物），纯本地查表，**不联网、不向任何第三方发送数据**。
 
 这些第三方按其自身的隐私政策处理收到的文本。
 
@@ -79,6 +81,8 @@ Translated text is sent to the following third-party translation services (chose
 - **Google Translate** (translate.googleapis.com / translate.google.com) — default engine;
 - **Bing Translator** (www.bing.com) — optional, or fallback when Google is unavailable;
 - **MyMemory** (api.mymemory.translated.net) — last-resort fallback when the first two are unreachable.
+
+**English phonetics**: provided by an **offline dictionary bundled with the extension** (derived from CMUdict). Lookups happen entirely on your device — **no network request, no data sent to any third party**.
 
 These third parties handle the text according to their own privacy policies.
 

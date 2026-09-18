@@ -92,6 +92,20 @@
     chrome.runtime.sendMessage({ action: 'abortTranslate', requestId: id }, () => void chrome.runtime.lastError);
   });
 
+  // 页面 → 后台：离线音标查询（本地内置词典，不发任何网络请求）
+  document.documentElement.addEventListener('kt-ipa-request', (e) => {
+    const detail = (e && e.detail) || {};
+    if (!detail.id || !Array.isArray(detail.words) || !detail.words.length) return;
+    chrome.runtime.sendMessage({ action: 'kt-ipa-lookup', words: detail.words }, (resp) => {
+      const err = chrome.runtime.lastError;
+      post('kt-ipa-response', {
+        id: detail.id,
+        ok: !err && !!(resp && resp.ok),
+        ipa: (resp && resp.ipa) || {},
+      });
+    });
+  });
+
   // 页面侧直连 Google：ISOLATED content script 走页面同款网络/代理，且不受页面 CSP 限制
   const GOOGLE_DIRECT_HOSTS = [
     'https://translate.googleapis.com/translate_a/single',

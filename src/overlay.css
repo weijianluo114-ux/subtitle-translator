@@ -223,6 +223,14 @@
   font-weight: 600;
 }
 
+#kt-tooltip .kt-tooltip-phonetic {
+  margin-top: 2px;
+  font-size: 0.78em;
+  font-weight: 500;
+  opacity: 0.72;
+  letter-spacing: 0.02em;
+}
+
 #kt-tooltip .kt-tooltip-meta {
   margin-top: 3px;
   font-size: 0.82em;

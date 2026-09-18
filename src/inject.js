@@ -46,6 +46,7 @@
     layoutSettleMs: 400,
     wordCacheMax: 3000,
     lineCacheMax: 1200,
+    ipaCacheMax: 3000,
     cacheWriteDelayMs: 5000,
     maxTranslateChars: 500,
     textWidthEm: 24,
@@ -94,6 +95,7 @@
     sentenceTranslation: true,
     translationEnabled: true,
     tooltipFollowSubtitle: true,
+    showPhonetic: true,
     tooltip: {
       fontFamily: 'auto',
       fontSize: 'auto',
@@ -214,6 +216,7 @@
     pick('sentenceTranslation', null, bool);
     pick('translationEnabled', null, bool);
     pick('tooltipFollowSubtitle', null, bool);
+    pick('showPhonetic', null, bool);
     if (src.tooltip && typeof src.tooltip === 'object') {
       for (const k of Object.keys(s.tooltip)) {
         const v = src.tooltip[k];
@@ -286,6 +289,8 @@
     notification: null,
     wordCache: new Map(),
     lineCache: new Map(),
+    ipaCache: new Map(),
+    lastIpa: null,
     cacheDirty: { word: false, line: false },
     cacheTimer: null,
     dragState: null,
@@ -328,6 +333,11 @@
       lastTimedtextResponse: STATE.lastTimedtextResponse,
       lastCaptionTracks: STATE.lastCaptionTracks,
       caches: { word: STATE.wordCache.size, line: STATE.lineCache.size },
+      phonetic: {
+        enabled: STATE.settings.showPhonetic !== false,
+        cached: STATE.ipaCache.size,
+        last: STATE.lastIpa || null,
+      },
       /* DOM 普查：页面上到底有几个气泡/通知（多窗堆叠只能靠这个字段证实） */
       dom: {
         overlay: countNodes('#kt-overlay'),
@@ -506,6 +516,127 @@
         detail: { id, text, sl, tl },
       }));
     });
+  }
+
+  /* ============================ 音标（内置离线词典，经桥转发给后台查表） ============================ */
+
+  function isEnglishToken(text) {
+    return /^[A-Za-z][A-Za-z'\-]*$/.test(String(text || '').trim());
+  }
+
+  function ipaLookupKey(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/^[^a-z]+/, '')
+      .replace(/[^a-z'\-]+$/, '');
+  }
+
+  function formatPhonetic(list) {
+    const out = (Array.isArray(list) ? list : []).slice(0, 2).filter(Boolean);
+    return out.map((x) => '/' + x + '/').join(' ');
+  }
+
+  function ipaGet(text) {
+    const key = ipaLookupKey(text);
+    if (!key) return undefined;
+    const hit = STATE.ipaCache.get(key);
+    if (hit) { STATE.ipaCache.delete(key); STATE.ipaCache.set(key, hit); }
+    return hit;
+  }
+
+  function ipaPut(word, list) {
+    const key = ipaLookupKey(word);
+    if (!key) return;
+    if (STATE.ipaCache.has(key)) STATE.ipaCache.delete(key);
+    STATE.ipaCache.set(key, Array.isArray(list) ? list : []);
+    while (STATE.ipaCache.size > CFG.ipaCacheMax) {
+      const oldest = STATE.ipaCache.keys().next().value;
+      STATE.ipaCache.delete(oldest);
+    }
+  }
+
+  /* 向后台要音标：纯本地查表，返回 { word: [ipa, ...] } */
+  function requestIpa(words) {
+    return new Promise((resolve) => {
+      const list = [];
+      for (const w of words || []) {
+        const key = ipaLookupKey(w);
+        if (key && !list.includes(key)) list.push(key);
+        if (list.length >= 200) break;
+      }
+      if (!list.length) { resolve({}); return; }
+      const id = 'i' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        document.documentElement.removeEventListener('kt-ipa-response', onResp);
+        resolve({});
+      }, 4000);
+      const onResp = (e) => {
+        if (!e.detail || e.detail.id !== id) return;
+        settled = true;
+        clearTimeout(timer);
+        document.documentElement.removeEventListener('kt-ipa-response', onResp);
+        resolve(e.detail.ipa || {});
+      };
+      document.documentElement.addEventListener('kt-ipa-response', onResp);
+      document.documentElement.dispatchEvent(new CustomEvent('kt-ipa-request', { detail: { id, words: list } }));
+    });
+  }
+
+  /* 字幕块渲染时批量预取，悬停时直接命中缓存 */
+  function prefetchIpaForChunk(chunk) {
+    if (!chunk || STATE.settings.showPhonetic === false) return;
+    const start = chunk.wordStartIndex;
+    const end = chunk.wordEndIndex;
+    if (!(start >= 0 && end > start)) return;
+    const need = [];
+    for (let i = start; i < end && i < STATE.words.length; i++) {
+      const txt = STATE.words[i].text;
+      if (!isEnglishToken(txt)) continue;
+      const key = ipaLookupKey(txt);
+      if (!key || STATE.ipaCache.has(key) || need.includes(key)) continue;
+      need.push(key);
+    }
+    if (!need.length) return;
+    requestIpa(need).then((map) => {
+      let hits = 0;
+      for (const [word, list] of Object.entries(map || {})) {
+        ipaPut(word, list);
+        if (list && list.length) hits += 1;
+      }
+      for (const key of need) if (!STATE.ipaCache.has(key)) ipaPut(key, []); // 负缓存，避免反复查
+      debugLog('ipa_prefetch', { words: need.length, hits });
+    }).catch(() => {});
+  }
+
+  /* 悬停词 → 音标行：英文查内置离线词典（查不到就不显示，绝不回退 Google 的 respelling）；
+   * 非英文用翻译接口返回的源语言罗马化（如日文罗马字），为空则不显示 */
+  function updatePhonetic(selText, data, gen) {
+    if (STATE.settings.showPhonetic === false) { setTooltipSection('phonetic', ''); return; }
+    const single = !/\s/.test(String(selText || '').trim());
+    if (!single) { setTooltipSection('phonetic', ''); return; }
+    if (isEnglishToken(selText)) {
+      const key = ipaLookupKey(selText);
+      const cached = ipaGet(key);
+      if (cached) {
+        STATE.lastIpa = { word: key, ipa: cached, source: 'cache' };
+        setTooltipSection('phonetic', formatPhonetic(cached));
+        return;
+      }
+      setTooltipSection('phonetic', '');
+      requestIpa([key]).then((map) => {
+        const list = (map && map[key]) || [];
+        ipaPut(key, list);
+        STATE.lastIpa = { word: key, ipa: list, source: 'lookup' };
+        if (gen !== STATE.hoverGen) return;
+        setTooltipSection('phonetic', formatPhonetic(list));
+        if (list.length) positionTooltip();
+      }).catch(() => {});
+      return;
+    }
+    setTooltipSection('phonetic', (data && data.transcription) || '');
   }
 
   /* 文本指纹：日志只存前 120 字符，靠 len + fp 才能判断"两次请求的文本是否真的相同" */
@@ -1748,6 +1879,7 @@
     STATE.activeChunkRaw = active ? active.rawText : '';
     STATE.currentChunkWordStart = active ? active.wordStartIndex : -1;
     STATE.currentChunkWordEnd = active ? active.wordEndIndex : -1;
+    prefetchIpaForChunk(active);
     STATE.overlay.dataset.empty = text ? '0' : '1';
     checkPointerState();
     debugLog('render', { text: text.slice(0, 80), reason: active ? active.reason : 'none' });
@@ -2033,6 +2165,8 @@
     box.id = 'kt-tooltip';
     const word = document.createElement('div');
     word.className = 'kt-tooltip-word';
+    const phonetic = document.createElement('div');
+    phonetic.className = 'kt-tooltip-phonetic';
     const meta = document.createElement('div');
     meta.className = 'kt-tooltip-meta';
     const label = document.createElement('div');
@@ -2040,6 +2174,7 @@
     const line = document.createElement('div');
     line.className = 'kt-tooltip-line';
     box.appendChild(word);
+    box.appendChild(phonetic);
     box.appendChild(meta);
     box.appendChild(label);
     box.appendChild(line);
@@ -2057,7 +2192,7 @@
     const el = tooltipSection(name);
     if (!el) return;
     el.textContent = text || '';
-    if (name === 'meta' || name === 'line-label') el.style.display = text ? '' : 'none';
+    if (name === 'meta' || name === 'line-label' || name === 'phonetic') el.style.display = text ? '' : 'none';
   }
 
   function styleTooltip() {
@@ -2192,6 +2327,7 @@
     ensureTooltip();
     setTooltipSection('word', t('loading'));
     setTooltipSection('meta', '');
+    setTooltipSection('phonetic', formatPhonetic(ipaGet(selText)));
     setTooltipSection('line-label', lineText ? t('lineLabel') : '');
     setTooltipSection('line', lineText ? t('loading') : '');
     try {
@@ -2212,9 +2348,9 @@
         return;
       }
       setTooltipSection('word', data.translatedText);
-      const metaParts = [data.transliteration, data.transcription].filter(Boolean);
-      const dict = data.dictionary || '';
-      setTooltipSection('meta', (metaParts.length ? metaParts.join('  ·  ') + (dict ? '\n' : '') : '') + dict);
+      /* 拼音（目标语言罗马化）不再显示；音标走内置离线词典 */
+      setTooltipSection('meta', data.dictionary || '');
+      updatePhonetic(selText, data, gen);
       positionTooltip();
     }).catch((err) => {
       if (gen !== STATE.hoverGen) return;
@@ -2847,6 +2983,11 @@
     buildSentenceUnits,
     assembleTranslationUnits,
     findTranslationUnit,
+    isEnglishToken,
+    ipaLookupKey,
+    formatPhonetic,
+    prefetchIpaForChunk,
+    requestIpa,
     purgeOrphanNodes,
     mountOverlayNode,
     tooltipHost,

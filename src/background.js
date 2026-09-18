@@ -242,8 +242,82 @@ const mymemory = new MyMemoryTranslator();
 const activeRequests = new Map();
 let lastGoodEngine = null; // 记住上次成功的引擎，下次优先走它，避免每次都白试
 
+/* ============================ 离线音标词典（内置，纯本地，不联网） ============================
+ * 数据：CMUdict（BSD-2-Clause）经 tools/make_ipa_dict.py 转成的美式 IPA，见 src/data/ipa-en.tsv。
+ * 首次查询时懒加载并解析成 Map，之后常驻（service worker 生命周期内）。 */
+const IPA_DICT_PATH = 'data/ipa-en.tsv';
+let ipaDict = null;
+let ipaDictLoading = null;
+
+function parseIpaTsv(text) {
+  const map = new Map();
+  for (const line of String(text || '').split('\n')) {
+    if (!line || line.charCodeAt(0) === 35 /* # 注释行 */) continue;
+    const tab = line.indexOf('\t');
+    if (tab <= 0) continue;
+    const word = line.slice(0, tab);
+    const ipas = line.slice(tab + 1).split(';').filter(Boolean);
+    if (ipas.length) map.set(word, ipas);
+  }
+  return map;
+}
+
+/* 归一化：小写 + 去掉首尾非字母 */
+function ipaLookupKey(rawWord) {
+  return String(rawWord || '')
+    .toLowerCase()
+    .replace(/^[^a-z]+/, '')
+    .replace(/[^a-z'\-]+$/, '');
+}
+
+/* 查表：原词 → 去所有格/缩写 → 去连字符 → 连字符末段，依次回退 */
+function lookupIpa(map, rawWord) {
+  const w = ipaLookupKey(rawWord);
+  if (!w || !map || !map.size) return [];
+  if (map.has(w)) return map.get(w);
+  const stripped = w.replace(/['’](s|re|ve|ll|d|m|t)$/, '');
+  if (stripped && stripped !== w && map.has(stripped)) return map.get(stripped);
+  const noHyphen = w.replace(/-/g, '');
+  if (noHyphen !== w && map.has(noHyphen)) return map.get(noHyphen);
+  const last = w.split('-').pop();
+  if (last && last !== w && map.has(last)) return map.get(last);
+  return [];
+}
+
+async function loadIpaDict() {
+  if (ipaDict) return ipaDict;
+  if (!ipaDictLoading) {
+    ipaDictLoading = (async () => {
+      try {
+        const resp = await fetch(chrome.runtime.getURL(IPA_DICT_PATH));
+        ipaDict = parseIpaTsv(await resp.text());
+      } catch (e) {
+        ipaDict = new Map(); // 读取失败只影响音标显示，不影响翻译等其它功能
+      }
+      return ipaDict;
+    })();
+  }
+  return ipaDictLoading;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false;
+
+  /* 离线音标查询：纯本地查表，不发任何网络请求 */
+  if (message.action === 'kt-ipa-lookup') {
+    const words = Array.isArray(message.words) ? message.words.slice(0, 200) : [];
+    loadIpaDict()
+      .then((map) => {
+        const ipa = {};
+        for (const w of words) {
+          const hit = lookupIpa(map, w);
+          if (hit.length) ipa[String(w)] = hit.slice(0, 4);
+        }
+        sendResponse({ ok: true, ipa, size: map.size });
+      })
+      .catch(() => sendResponse({ ok: false, ipa: {} }));
+    return true; // 异步响应
+  }
 
   if (message.action === 'translate') {
     const controller = new AbortController();
