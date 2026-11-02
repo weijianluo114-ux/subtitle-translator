@@ -1,7 +1,7 @@
 # 隐私政策 / Privacy Policy（完整版）
 
 **适用产品**：字幕整行翻译 / Subtitle Line Translator（Chrome 扩展）
-**生效日期 / Last updated**：2026-09-18
+**生效日期 / Last updated**：2026-11-02
 
 ---
 
@@ -12,6 +12,7 @@
 - 扩展仅在**本地**读取 YouTube 页面自身的字幕数据，用于"整行字幕显示"。
 - 翻译功能：仅当你**主动把鼠标悬停在字幕单词上**时，被悬停的单词/短语与当前整行字幕文本会发送给翻译服务（见第 3 条）。
 - **用户反馈（完全自愿）**：仅当你主动在扩展内点击「反馈 / 建议」并发送时，才会把你填写的内容发送给我们；你可选择（默认**不勾选**）附带少量诊断信息（扩展版本、浏览器版本、当前视频链接、最近 20 条调试日志）。详见第 10 条。
+- **可选离线词典（完全自愿、默认不下载）**：扩展本体**不包含**词典数据。只有你在设置里主动点击「下载」时，扩展才会从 CDN 取回词典分片并保存在本机；下载过程中**只下载词典文件，不上传你的任何内容（不发送字幕、不发送查询词）**。详见第 3 条与第 11 条。
 
 ### 2. 信息如何使用
 - 仅用于提供核心功能（整行字幕显示、悬停翻译、整句翻译）。
@@ -24,6 +25,13 @@
 - **MyMemory**（api.mymemory.translated.net）——前两者均不可达时的最后兜底。
 
 **英文音标**：使用**内置于扩展的离线词典**（CMUdict 转换产物），纯本地查表，**不联网、不向任何第三方发送数据**。
+
+**可选离线词典的下载来源**（仅在你主动下载时联系，且只做「下载」这一个动作）：
+- **jsDelivr CDN**（cdn.jsdelivr.net）——默认下载地址，托管本项目的 `dict-v1` 词典包；
+- **GitHub Raw**（raw.githubusercontent.com）——CDN 不可达时的备用地址；
+- 你也可以在设置里**自填镜像地址**，此时只会联系你自己填的地址。
+
+下载完成后的查词**完全在本机进行**（扩展源 IndexedDB），**不会**把查询的单词或字幕发给上述任何一方，也不经过任何翻译服务。
 
 这些第三方按其自身的隐私政策处理收到的文本。
 
@@ -62,6 +70,13 @@
 - 反馈仅用于修复问题与改进功能，不用于广告、用户画像或出售。
 - 处理方：Cloudflare（存储与转发）、飞书（消息通知）。
 
+### 11. 可选离线词典（下载与本地存储）
+- **默认不下载**：扩展安装后不包含、也不会自动下载任何词典数据；不下载时该功能完全不生效。
+- **你会得到什么**：三项开源词典（ECDICT 英汉 401,606 词条 / WordNet 3.1 英英 82,810 词条 / CC-CEDICT 汉英 198,553 词条），可在设置里单独下载或删除。
+- **存储位置与大小**：保存在你本机的扩展源 IndexedDB（数据库名 `kt-dict`），三项全部下载约 18 MB；卸载扩展或点击「删除」即随之清除。
+- **不上传**：下载过程只发送对词典文件的 GET 请求；不做遥测、不上报下载结果、不发送查询词。
+- **许可**：三项词典均为开源许可（MIT / WordNet License / CC BY-SA 4.0），署名与许可全文随扩展提供，见 `THIRD_PARTY_NOTICES.md` 与 `src/data/*-LICENSE.txt`。
+
 ---
 
 ## English
@@ -71,6 +86,7 @@
 - The extension reads YouTube's own caption data **locally** to render full-line captions.
 - Translation: only when you **actively hover over a subtitle word**, the hovered word/phrase and the current caption line are sent to a translation service (see Section 3).
 - **User feedback (entirely voluntary)**: only when you click "Feedback" in the extension and press send do we receive the message you typed; you may optionally (**unchecked by default**) attach limited diagnostics (extension version, browser version, current video URL, last 20 debug logs). See Section 10.
+- **Optional offline dictionaries (entirely voluntary, not downloaded by default)**: no dictionary data is bundled with the extension. Only when you click "Download" in settings does the extension fetch dictionary shards and store them on your device. During the download **only dictionary files are retrieved — nothing from your side is uploaded (no captions, no looked-up words)**. See Sections 3 and 11.
 
 ### 2. How We Use Information
 - Solely to provide the core functionality (full-line captions, hover translation, whole-line translation).
@@ -83,6 +99,13 @@ Translated text is sent to the following third-party translation services (chose
 - **MyMemory** (api.mymemory.translated.net) — last-resort fallback when the first two are unreachable.
 
 **English phonetics**: provided by an **offline dictionary bundled with the extension** (derived from CMUdict). Lookups happen entirely on your device — **no network request, no data sent to any third party**.
+
+**Download sources for the optional offline dictionaries** (contacted only when you start a download, and only to download):
+- **jsDelivr CDN** (cdn.jsdelivr.net) — the default location hosting this project's `dict-v1` dictionary package;
+- **GitHub Raw** (raw.githubusercontent.com) — fallback when the CDN is unreachable;
+- You may also enter **your own mirror URL** in settings, in which case only that address is contacted.
+
+After a dictionary is installed, word lookups happen **entirely on your device** (extension-origin IndexedDB). Looked-up words and caption text are **never** sent to any of the parties above, nor to any translation service.
 
 These third parties handle the text according to their own privacy policies.
 
@@ -110,6 +133,13 @@ These third parties handle the text according to their own privacy policies.
 
 ### 8. Changes to This Policy
 - Updates will be published on the PRIVACY.md page of the public repository.
+
+### 11. Optional Offline Dictionaries (download and local storage)
+- **Not downloaded by default**: no dictionary data is bundled, and nothing is downloaded automatically. Without a download the feature is inactive.
+- **What you get**: three open-source dictionaries (ECDICT English–Chinese, 401,606 entries / WordNet 3.1 English–English, 82,810 entries / CC-CEDICT Chinese–English, 198,553 entries), each downloadable or removable individually in settings.
+- **Where and how much**: stored in your device's extension-origin IndexedDB (database `kt-dict`); all three together are about 18 MB. Removing the extension or clicking "Remove" deletes them.
+- **No upload**: a download only issues GET requests for dictionary files. No telemetry, no download reporting, and no looked-up words are transmitted.
+- **Licensing**: all three are open-source (MIT / WordNet License / CC BY-SA 4.0); attribution and full license texts ship with the extension, see `THIRD_PARTY_NOTICES.md` and `src/data/*-LICENSE.txt`.
 
 ### 9. Contact
 - https://github.com/weijianluo114-ux/subtitle-translator/issues

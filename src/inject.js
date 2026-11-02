@@ -96,6 +96,8 @@
     translationEnabled: true,
     tooltipFollowSubtitle: true,
     showPhonetic: true,
+    offlineDict: true,
+    dictSource: 'auto',
     tooltip: {
       fontFamily: 'auto',
       fontSize: 'auto',
@@ -120,6 +122,10 @@
       loading: '翻译中…',
       captionsFailed: '字幕加载失败',
       resumeFailed: '翻译完成，请手动继续播放',
+      dictOffline: '离线释义',
+      dictSourceEcdict: 'ECDICT',
+      dictSourceWordnet: 'WordNet',
+      dictSourceCedict: 'CC-CEDICT',
     },
     en: {
       translationFailed: 'Translation failed',
@@ -130,6 +136,10 @@
       loading: 'Translating…',
       captionsFailed: 'Failed to load captions',
       resumeFailed: 'Translation done — press play to continue',
+      dictOffline: 'Offline',
+      dictSourceEcdict: 'ECDICT',
+      dictSourceWordnet: 'WordNet',
+      dictSourceCedict: 'CC-CEDICT',
     },
   };
   const t = (key) => (STR[STATE_SETTINGS().uiLang] || STR.en)[key] || key;
@@ -217,6 +227,8 @@
     pick('translationEnabled', null, bool);
     pick('tooltipFollowSubtitle', null, bool);
     pick('showPhonetic', null, bool);
+    pick('offlineDict', null, bool);
+    pick('dictSource', ['auto', 'offline', 'online']);
     if (src.tooltip && typeof src.tooltip === 'object') {
       for (const k of Object.keys(s.tooltip)) {
         const v = src.tooltip[k];
@@ -583,6 +595,73 @@
       document.documentElement.addEventListener('kt-ipa-response', onResp);
       document.documentElement.dispatchEvent(new CustomEvent('kt-ipa-request', { detail: { id, words: list } }));
     });
+  }
+
+
+  /* ============================ 离线词典（页面侧） ============================
+   * 词典分片存在扩展源的 IndexedDB 里，只有 service worker 能读；页面侧一律通过
+   * 'kt-dict-request' → storage-bridge → background 查询，再经 'kt-dict-response' 回传。
+   * 本文件不碰 IndexedDB，也不发网络请求。 */
+
+  function dictSourceLabel(dictId) {
+    if (dictId === 'ecdict') return t('dictSourceEcdict');
+    if (dictId === 'wordnet') return t('dictSourceWordnet');
+    if (dictId === 'cedict') return t('dictSourceCedict');
+    return dictId || '';
+  }
+
+  /* 把词条 body（"音标\t释义" 或 "词性\t释义" 或 "拼音\t释义"）拆成展示用结构 */
+  function parseDictBody(body) {
+    const raw = String(body || '');
+    const tab = raw.indexOf('\t');
+    if (tab < 0) return { head: '', gloss: raw };
+    return { head: raw.slice(0, tab).trim(), gloss: raw.slice(tab + 1).trim() };
+  }
+
+  /* 离线释义的展示文本：首行放 head（音标/词性/拼音），其余是中文或英文释义 */
+  function formatOfflineGloss(body) {
+    const { head, gloss } = parseDictBody(body);
+    const lines = [];
+    if (head) lines.push(head);
+    if (gloss) lines.push(gloss);
+    return lines.join('\n');
+  }
+
+  /* 页面 → 后台：查离线词典（未下载任何词典时后台立即回 { ok:false }） */
+  function requestDictLookup(word) {
+    return new Promise((resolve) => {
+      const text = String(word || '').trim();
+      if (!text) { resolve(null); return; }
+      const id = 'd' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        document.documentElement.removeEventListener('kt-dict-response', onResp);
+        resolve(value);
+      };
+      const timer = setTimeout(() => finish(null), 3000);
+      const onResp = (e) => {
+        const d = e && e.detail;
+        if (!d || d.id !== id) return;
+        finish(d.ok ? d : null);
+      };
+      document.documentElement.addEventListener('kt-dict-response', onResp);
+      document.documentElement.dispatchEvent(new CustomEvent('kt-dict-request', { detail: { id, word: text } }));
+    });
+  }
+
+  /* 离线优先：命中返回 { dictId, body, label, text }，否则 null。
+   * dictSource = 'online' 时完全不查离线（连事件都不发）；'auto'/'offline' 都先查离线。 */
+  async function lookupOfflineOrOnline(word) {
+    if (STATE.settings.offlineDict === false) return null;
+    if (STATE.settings.dictSource === 'online') return null;
+    const hit = await requestDictLookup(word);
+    if (!hit) return null;
+    const text = formatOfflineGloss(hit.body);
+    if (!text) return null;
+    return { dictId: hit.dictId, body: hit.body, label: dictSourceLabel(hit.dictId), text };
   }
 
   /* 字幕块渲染时批量预取，悬停时直接命中缓存 */
@@ -2338,26 +2417,32 @@
       showNotification(t('translationFailed'), true);
     }
 
-    const wordPromise = translateCached('word', selText, controller.signal);
+    const wordPromise = resolveWordTranslation(selText, controller.signal);
     STATE.activeTranslation = { text: selText, promise: wordPromise };
     wordPromise.then((data) => {
       if (gen !== STATE.hoverGen) return;
       if (!data || !data.translatedText) {
+        const el = tooltipSection('word');
         setTooltipSection('word', t('translationFailed'));
-        tooltipSection('word').classList.add('kt-tooltip-error');
+        if (el) el.classList.add('kt-tooltip-error');
         return;
       }
       setTooltipSection('word', data.translatedText);
-      /* 拼音（目标语言罗马化）不再显示；音标走内置离线词典 */
-      setTooltipSection('meta', data.dictionary || '');
+      /* 离线释义时把来源写进 meta（用户要能分辨这不是在线翻译结果）；
+       * 在线翻译时 meta 放 Google 返回的词性释义，音标始终走内置 CMUdict */
+      if (data.offline) {
+        setTooltipSection('meta', '[' + (data.dictLabel || '') + '] ' + t('dictOffline'));
+      } else {
+        setTooltipSection('meta', data.dictionary || '');
+      }
       updatePhonetic(selText, data, gen);
       positionTooltip();
     }).catch((err) => {
       if (gen !== STATE.hoverGen) return;
       const msg = String((err && err.message) || err);
       debugLog('translate_error', { kind: 'word', text: selText, error: msg });
-      setTooltipSection('word', t('translationFailed') + '：' + msg);
       const el = tooltipSection('word');
+      setTooltipSection('word', t('translationFailed') + '：' + msg);
       if (el) el.classList.add('kt-tooltip-error');
     });
 
@@ -2393,12 +2478,56 @@
     if (dx > CFG.dragThresholdPx || dy > CFG.dragThresholdPx) STATE.dragState.dragging = true;
   }
 
-  async function resolveWordTranslation(text) {
+  /* 词翻译统一入口（悬停气泡与左键复制都走这里）：
+   *   离线优先 → 命中直接返回，完全不发网络请求（省流量、也不受墙影响）
+   *   未命中 → 网络翻译
+   *   网络失败 → 若还有离线词条就兜底（dictSource==='online' 时按用户要求只用在线）
+   * 返回值统一成 { translatedText, originalText, offline?, dictLabel? }，复制路径无需分支。 */
+  async function resolveWordTranslation(text, signal) {
     if (STATE.activeTranslation && STATE.activeTranslation.text === text) {
-      const data = await STATE.activeTranslation.promise.catch(() => null);
-      if (data) return data;
+      const cached = await STATE.activeTranslation.promise.catch(() => null);
+      if (cached) return cached;
     }
-    return translateCached('word', text);
+    const settings = STATE.settings;
+    const canOffline = settings.offlineDict !== false;
+    const offlineOnly = canOffline && settings.dictSource === 'offline';
+    const onlineOnly = settings.dictSource === 'online';
+
+    if (canOffline && !onlineOnly) {
+      const off = await lookupOfflineOrOnline(text);
+      if (off) {
+        const { gloss } = parseDictBody(off.body);
+        const result = {
+          translatedText: gloss || off.text,
+          originalText: String(text || '').trim(),
+          offline: true,
+          dictId: off.dictId,
+          dictLabel: off.label,
+        };
+        debugLog('dict_hit', { word: result.originalText, dict: off.dictId });
+        return result;
+      }
+      if (offlineOnly) return null;    // 只用离线：查不到就如实显示失败
+    }
+
+    const data = await translateCached('word', text, signal);
+    if (data && data.translatedText) return data;
+
+    if (canOffline && !onlineOnly && !offlineOnly) {
+      const off = await lookupOfflineOrOnline(text);
+      if (off) {
+        const { gloss } = parseDictBody(off.body);
+        debugLog('dict_fallback', { word: String(text || '').trim(), dict: off.dictId });
+        return {
+          translatedText: gloss || off.text,
+          originalText: String(text || '').trim(),
+          offline: true,
+          dictId: off.dictId,
+          dictLabel: off.label,
+        };
+      }
+    }
+    return null;
   }
 
   function copyText(text) {
@@ -2433,7 +2562,7 @@
     if (action === 'nothing') return;
     const selText = getSelectedText();
     if (!selText) return;
-    resolveWordTranslation(selText)
+    resolveWordTranslation(selText, null)
       .then((data) => {
         if (!data || !data.translatedText) {
           showNotification(t('translationFailed'), true);
@@ -2988,6 +3117,8 @@
     formatPhonetic,
     prefetchIpaForChunk,
     requestIpa,
+    requestDictLookup,
+    lookupOfflineOrOnline,
     purgeOrphanNodes,
     mountOverlayNode,
     tooltipHost,

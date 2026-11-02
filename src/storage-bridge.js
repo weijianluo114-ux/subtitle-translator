@@ -92,6 +92,40 @@
     chrome.runtime.sendMessage({ action: 'abortTranslate', requestId: id }, () => void chrome.runtime.lastError);
   });
 
+  // 页面 → 后台：离线词典（查词 / 安装进度 / 状态），IndexedDB 在扩展源，只有后台能碰
+  document.documentElement.addEventListener('kt-dict-request', (e) => {
+    const detail = (e && e.detail) || {};
+    if (!detail.op && !detail.word) return;
+    const id = detail.id;
+    chrome.runtime.sendMessage(
+      {
+        action: 'kt-dict',
+        op: detail.op || 'lookup',
+        word: detail.word || '',
+        dictId: detail.dictId || '',
+        mirror: detail.mirror || '',
+      },
+      (resp) => {
+        const err = chrome.runtime.lastError;
+        post('kt-dict-response', {
+          id,
+          ok: !err && !!(resp && resp.ok !== false),
+          dictId: resp && resp.dictId,
+          key: resp && resp.key,
+          body: resp && resp.body,
+          license: resp && resp.license,
+          installed: resp && resp.installed,
+          progress: resp && resp.progress,
+          entries: resp && resp.entries,
+          bytes: resp && resp.bytes,
+          cdn: resp && resp.cdn,
+          dicts: resp && resp.dicts,
+          error: (err && err.message) || (resp && resp.error) || null,
+        });
+      }
+    );
+  });
+
   // 页面 → 后台：离线音标查询（本地内置词典，不发任何网络请求）
   document.documentElement.addEventListener('kt-ipa-request', (e) => {
     const detail = (e && e.detail) || {};

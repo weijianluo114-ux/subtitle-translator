@@ -14,6 +14,45 @@
 
 ---
 
+## 0.4.0 — 2026-11-02
+
+**开发中，未上架。** 分支 `test`。可选离线词典（下载即用、离线优先）。
+
+### 新增
+
+- **可选离线词典下载（三项，各自独立下载/删除）**
+  | id | 词典 | 词条 | 许可 | 角色 | 体积（32 分片 gz） |
+  | --- | --- | --- | --- | --- | --- |
+  | `ecdict` | ECDICT 英汉 | 401,606 | MIT | **主选** | 8.99 MB |
+  | `wordnet` | WordNet 3.1 英英 | 82,810 | WordNet License | 备用 | 2.87 MB |
+  | `cedict` | CC-CEDICT 汉英 | 198,553 | CC BY-SA 4.0 | 备用 | 6.33 MB |
+- **词典不打包进扩展**（否则商店包 +18 MB）：改为按需下载，存进扩展源 IndexedDB（库 `kt-dict`，store `shards`/`meta`，键 `<dictId>:<bucket>`）。扩展包体积仅 +约 20 KB（清单）。
+- **分片方案**：每词典切 32 个 `<bucket>.tsv.gz`，`bucket = fnv1a(key) % 32`（与 Python 端逐 UTF-16 码元一致，JS 端必须用 `Math.imul` 才不丢精度）。只查命中的那一片，解压后可 LRU 缓存 8 片。
+- **离线优先**：命中离线词典时**不再发任何网络翻译请求**，直接显示离线释义；未命中才走 Google/Bing/MyMemory。设置键 `offlineDict`（默认开）、`dictSource`（`auto`/`offline`/`online`）。
+- **网络失败兜底**：在线翻译失败时若离线有词条，就用中文释义顶替「词译文」，并在 meta 行标注 `[ECDICT] 离线释义`，让用户能分辨这不是在线结果。
+- **查表归一化**：小写 → 去首尾标点 → 所有格/缩写回退（`word's → word`）→ 连字符回退（`well-known → wellknown → known`）。中文词走 CC-CEDICT，英文词走 ECDICT → WordNet。
+- **弹窗 UI（设置面板 →「离线词典」组）**：总开关、三项词典卡片（名称/条目数/体积/许可/状态/下载-删除按钮）、逐片进度条与百分比、可选「下载镜像」输入框、合规说明文案。
+- **进度走长连接端口**：`chrome.runtime.connect({name:'kt-dict-progress'})` 逐片回传 `{type:'progress'|'done'|'error'}`；单次 `sendResponse` 只能回一条，下载几十秒会被截断。
+- **断点续传**：已下载且 sha256 匹配的分片直接跳过，中断后再点「下载」不用从头再来。
+
+### 修复
+
+- 修正 **FNV-1a 乘法精度**：`h * 0x01000193` 超过 2^53，普通乘法会丢精度，导致 JS 与 Python 的 hash 不一致（实测 9 个样本全部 bucket 错位）。改用 `Math.imul` 后逐一对齐。
+
+### 变更
+
+- `src/manifest.json`：版本 `0.3.3 → 0.4.0`；`host_permissions` 新增 `https://cdn.jsdelivr.net/*`、`https://raw.githubusercontent.com/*`（仅用于下载词典分片）。
+- 新增 `src/dict.js`（后台共享模块：hash/归一化/gzip/sha256/IndexedDB/清单/安装），由 `background.js` 用 `importScripts('dict.js')` 载入；**不注入页面**，页面侧只通过 `kt-dict-request` → `storage-bridge` → `kt-dict` 转发。
+- `src/background.js` 新增 `kt-dict` 消息分支（`status`/`catalog`/`lookup`/`install`/`remove`）与 `kt-dict-progress` 端口。
+- `src/inject.js` 新增 `requestDictLookup`/`lookupOfflineOrOnline`/`parseDictBody`/`formatOfflineGloss`/`dictSourceLabel`，并把词翻译统一收敛到 `resolveWordTranslation`（悬停与左键复制共用同一条离线优先链路）。
+- 新增 `tools/build_dicts.py`（可复现生成脚本：`--download` 拉源、`--only` 单独重建；同时输出 `dicts/catalog.json` 与随扩展分发的 `src/data/dict-catalog.json`）。
+
+### 文档
+
+- `src/THIRD_PARTY_NOTICES.md`：新增三词典署名、许可与来源，补充「只下载不上传」的数据流向；许可全文随包分发（`src/data/ECDICT-LICENSE.txt`、`WORDNET-LICENSE.txt`、`CC-BY-SA-4.0.txt`）。
+- `PRIVACY.md`：新增 §11「可选离线词典（下载与本地存储）」中英双语，§1/§3 补充下载域名（jsDelivr / GitHub Raw / 自填镜像）与「查词完全本地、不上传」；生效日期改 2026-11-02。
+- `tests/kt-core-test.mjs`：新增第 18 组「离线词典」**54 条断言**（hash 与 Python 的 9 组样本对照、归一化/回退、`dictSource` 词典顺序、清单条目数与分片数一致、分片文件存在性、`00` 分片 sha256 校验、端到端「bucketOf → 解压 → 查表」含中文校验）；总数 **131 条 ALL PASS**。
+
 ## 0.3.3 — 2026-09-18
 
 **开发中，未上架。** 分支 `test`。对应 `docs/16-功能设计-音标与注音.md`（去掉拼音 + 内置离线 IPA 音标）。

@@ -32,6 +32,9 @@ const DEFAULT_SETTINGS = {
   sentenceTranslation: true,
   translationEnabled: true,
   showPhonetic: true,
+  offlineDict: true,
+  dictSource: 'auto',
+  dictMirror: '',
   tooltipFollowSubtitle: true,
   tooltip: {
     fontFamily: 'auto',
@@ -119,6 +122,30 @@ const I18N = {
     resetAppearance: '重置外观',
     langTip: '界面语言 / UI language',
     donateSub: '扫码请我喝杯咖啡，支持学费',
+    groupDict: '离线词典',
+    offlineDict: '使用离线词典（优先使用本地释义）',
+    dictLoading: '正在读取词典状态…',
+    dictMirror: '下载镜像（可选）',
+    dictNote: '词典从网络下载后保存在本地，只用于查询释义；扩展不会上传你的任何内容。首次下载约 9 MB，之后可离线使用。',
+    dictPriority: '释义优先级',
+    dictAuto: '离线优先（查不到走在线）',
+    dictOfflineOnly: '仅离线（查不到就不显示）',
+    dictOnlineOnly: '仅在线（不使用离线）',
+    dictPrimary: '主选',
+    dictBackup: '备用',
+    dictDownload: '下载',
+    dictRemove: '删除',
+    dictRetry: '重试',
+    dictReinstall: '重新下载',
+    dictInstalled: '已下载',
+    dictNotInstalled: '未下载',
+    dictEntries: '词条',
+    dictDownloading: '下载中',
+    dictVerifying: '校验中…',
+    dictFailed: '下载失败',
+    dictSaved: '已保存到本地',
+    dictRemoved: '已删除本地词典',
+    dictNeedOnline: '下载需要联网（YouTube 能打开才能下载）',
   },
   en: {
     appTitle: 'Subtitle Line Translator',
@@ -191,6 +218,30 @@ const I18N = {
     resetAppearance: 'Reset appearance',
     langTip: 'UI language',
     donateSub: 'Scan to buy me a coffee — supports my school fees',
+    groupDict: 'Offline dictionary',
+    offlineDict: 'Use offline dictionary (prefer local definitions)',
+    dictLoading: 'Reading dictionary status…',
+    dictMirror: 'Download mirror (optional)',
+    dictNote: 'Dictionaries are downloaded once and stored locally, only used to look up word definitions. Nothing from your side is uploaded. The first download is about 9 MB, then it works offline.',
+    dictPriority: 'Definition priority',
+    dictAuto: 'Offline first (fall back to online)',
+    dictOfflineOnly: 'Offline only (hide when missing)',
+    dictOnlineOnly: 'Online only (ignore offline)',
+    dictPrimary: 'Primary',
+    dictBackup: 'Backup',
+    dictDownload: 'Download',
+    dictRemove: 'Remove',
+    dictRetry: 'Retry',
+    dictReinstall: 'Re-download',
+    dictInstalled: 'Installed',
+    dictNotInstalled: 'Not installed',
+    dictEntries: 'entries',
+    dictDownloading: 'Downloading',
+    dictVerifying: 'Verifying…',
+    dictFailed: 'Download failed',
+    dictSaved: 'Saved locally',
+    dictRemoved: 'Local dictionary removed',
+    dictNeedOnline: 'Downloading needs a network connection',
   },
 };
 
@@ -253,6 +304,9 @@ function normalizeSettings(raw) {
   pick('translationEnabled', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('tooltipFollowSubtitle', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('showPhonetic', [true, false], (v) => (typeof v === 'boolean' ? v : null));
+  pick('offlineDict', [true, false], (v) => (typeof v === 'boolean' ? v : null));
+  pick('dictSource', ['auto', 'offline', 'online']);
+  pick('dictMirror', null, (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 400) : null));
   if (src.tooltip && typeof src.tooltip === 'object') {
     const tk = ['fontFamily','fontSize','fontColor','fontOpacity','backgroundColor','backgroundOpacity','characterEdgeStyle','textBold'];
     for (const k of tk) {
@@ -276,6 +330,9 @@ function render() {
   $('target-language').value = settings.targetLanguage;
   $('sentence-translation').checked = settings.sentenceTranslation;
   $('show-phonetic').checked = settings.showPhonetic !== false;
+  $('offline-dict').checked = settings.offlineDict !== false;
+  $('dict-source').value = settings.dictSource;
+  $('dict-mirror').value = settings.dictMirror || '';
   $('translation-enabled').checked = settings.translationEnabled;
   $('auto-pause').checked = settings.autoPause;
   $('left-click-action').value = settings.leftClickAction;
@@ -370,6 +427,204 @@ function fillTooltipSelects() {
 }
 
 /* 绑定 */
+
+/* ============================ 离线词典 UI ============================
+ * 弹窗可以直接用 chrome.runtime.sendMessage 调后台；下载进度由后台用同一条消息
+ * 通道流式回传（sendResponse 可能被调用多次）。 */
+
+let dictCatalog = null;
+let dictInstalled = null;
+let dictBusy = null;        // 正在下载的 dictId
+let dictMessage = null;     // { text, isError }
+
+function fmtBytes(n) {
+  const v = Number(n) || 0;
+  if (v >= 1024 * 1024) return (v / 1024 / 1024).toFixed(1) + ' MB';
+  if (v >= 1024) return Math.round(v / 1024) + ' KB';
+  return v + ' B';
+}
+
+function fmtCount(n) {
+  const v = Number(n) || 0;
+  return v >= 10000 ? Math.round(v / 1000) + 'k' : String(v);
+}
+
+function dictSend(payload) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(Object.assign({ action: 'kt-dict' }, payload), (resp) => {
+        void chrome.runtime.lastError;
+        resolve(resp || { ok: false, error: 'no response' });
+      });
+    } catch (e) {
+      resolve({ ok: false, error: String((e && e.message) || e) });
+    }
+  });
+}
+
+/* catalog 里 role=primary 的排前面，其余按体积升序（用户更容易先装小的备用词典） */
+function orderedDictIds() {
+  if (!dictCatalog || !dictCatalog.dicts) return [];
+  return Object.keys(dictCatalog.dicts).sort((a, b) => {
+    const ra = dictCatalog.dicts[a].role === 'primary' ? 0 : 1;
+    const rb = dictCatalog.dicts[b].role === 'primary' ? 0 : 1;
+    if (ra !== rb) return ra - rb;
+    return (dictCatalog.dicts[a].bytes || 0) - (dictCatalog.dicts[b].bytes || 0);
+  });
+}
+
+function renderDictList() {
+  const list = $('dict-list');
+  if (!list) return;
+
+  if (!dictCatalog || !dictCatalog.dicts) {
+    list.innerHTML = '<div class="kt-dict-note" data-i18n="dictLoading">' + t('dictLoading') + '</div>';
+    return;
+  }
+
+  const installed = dictInstalled || {};
+  const parts = [];
+
+  for (const id of orderedDictIds()) {
+    const info = dictCatalog.dicts[id];
+    const isPrimary = info.role === 'primary';
+    const done = !!installed[id];
+    const busy = dictBusy === id;
+    const name = uiLang === 'en' ? (info.nameEn || info.name) : (info.name || info.nameEn);
+    const desc = uiLang === 'en' ? (info.descEn || info.desc) : (info.desc || info.descEn);
+
+    parts.push(
+      '<div class="kt-dict-item" data-dict="' + id + '">' +
+        '<div class="kt-dict-head">' +
+          '<span class="kt-dict-badge' + (isPrimary ? '' : ' kt-dict-backup') + '">' +
+            (isPrimary ? t('dictPrimary') : t('dictBackup')) +
+          '</span>' +
+          '<span>' + escapeHtml(name) + '</span>' +
+          (done ? '<span class="kt-dict-badge kt-dict-done">' + t('dictInstalled') + '</span>' : '') +
+        '</div>' +
+        '<div class="kt-dict-meta">' + escapeHtml(desc || '') + '</div>' +
+        '<div class="kt-dict-meta">' +
+          fmtCount(info.entries) + ' ' + t('dictEntries') + ' · ' + fmtBytes(info.bytes) +
+          ' · ' + escapeHtml(info.license || '') +
+        '</div>' +
+        (busy ? '<div class="kt-dict-progress"><i style="width:' + (dictProgressPercent() || 0) + '%"></i></div>' : '') +
+        (busy || (dictMessage && dictMessage.dictId === id)
+          ? '<div class="kt-dict-status' + (dictMessage && dictMessage.isError ? ' kt-dict-error' : '') + '">' +
+              escapeHtml((dictMessage && dictMessage.dictId === id ? dictMessage.text : '')) + '</div>'
+          : '') +
+        '<div class="kt-dict-actions">' +
+          (busy
+            ? '<button class="kt-dict-btn" disabled>' + t('dictDownloading') + '…</button>'
+            : done
+              ? '<button class="kt-dict-btn kt-dict-danger" data-dict-remove="' + id + '">' + t('dictRemove') + '</button>' +
+                '<button class="kt-dict-btn" data-dict-install="' + id + '">' + t('dictReinstall') + '</button>'
+              : '<button class="kt-dict-btn" data-dict-install="' + id + '">' + t('dictDownload') + '</button>') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  list.innerHTML = parts.join('');
+}
+
+let dictProgress = null;
+function dictProgressPercent() {
+  if (!dictProgress || !dictProgress.total) return 0;
+  return Math.round((dictProgress.done / dictProgress.total) * 100);
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function refreshDictState() {
+  const [cat, st] = await Promise.all([
+    dictSend({ op: 'catalog' }),
+    dictSend({ op: 'status' }),
+  ]);
+  if (cat && cat.ok) dictCatalog = { cdn: cat.cdn, dicts: cat.dicts || {} };
+  if (st && st.ok) dictInstalled = st.installed || {};
+  renderDictList();
+}
+
+function installDict(dictId) {
+  if (dictBusy) return;
+  dictBusy = dictId;
+  dictProgress = { done: 0, total: dictCatalog && dictCatalog.dicts[dictId]
+    ? Object.keys(dictCatalog.dicts[dictId].shards || {}).length : 0 };
+  dictMessage = { dictId, text: t('dictDownloading') + '…', isError: false };
+  renderDictList();
+
+  const mirror = (settings.dictMirror || '').trim();
+  let port = null;
+
+  const finishFailed = (error) => {
+    dictBusy = null;
+    dictProgress = null;
+    dictMessage = { dictId, text: t('dictFailed') + '：' + (error || ''), isError: true };
+    renderDictList();
+  };
+
+  try {
+    /* 进度走长连接：后台逐片 postMessage，下载几十秒也不会被单次响应卡住 */
+    port = chrome.runtime.connect({ name: 'kt-dict-progress' });
+    port.onMessage.addListener((msg) => {
+      if (!msg) return;
+      if (msg.type === 'progress' && msg.progress) {
+        dictProgress = msg.progress;
+        dictMessage = {
+          dictId,
+          text: t('dictDownloading') + ' ' + msg.progress.done + '/' + msg.progress.total +
+            ' · ' + fmtBytes(msg.progress.bytes),
+          isError: false,
+        };
+        renderDictList();
+        return;
+      }
+      if (msg.type === 'done') {
+        dictBusy = null;
+        dictProgress = null;
+        dictMessage = { dictId, text: t('dictSaved'), isError: false };
+        refreshDictState();
+        try { port.disconnect(); } catch (e) { /* 已断开 */ }
+        return;
+      }
+      if (msg.type === 'error') {
+        finishFailed(msg.error);
+        try { port.disconnect(); } catch (e) { /* 已断开 */ }
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      void chrome.runtime.lastError;
+      if (dictBusy === dictId) {
+        /* service worker 被回收或端口异常断开：保留已下载分片，重试可续传 */
+        dictBusy = null;
+        dictProgress = null;
+        dictMessage = { dictId, text: t('dictFailed'), isError: true };
+        renderDictList();
+      }
+    });
+    port.postMessage({ dictId, mirror });
+  } catch (e) {
+    finishFailed(String((e && e.message) || e));
+  }
+}
+
+function removeDict(dictId) {
+  dictMessage = { dictId, text: t('dictVerifying'), isError: false };
+  renderDictList();
+  dictSend({ op: 'remove', dictId }).then((resp) => {
+    dictMessage = resp && resp.ok
+      ? { dictId, text: t('dictRemoved'), isError: false }
+      : { dictId, text: t('dictFailed') + '：' + ((resp && resp.error) || ''), isError: true };
+    dictBusy = null;
+    dictProgress = null;
+    return refreshDictState();
+  });
+}
+
 function bind() {
   const bindSel = (id, apply) => {
     $(id).addEventListener('change', () => { apply(); save(); });
@@ -388,6 +643,23 @@ function bind() {
   bindSel('left-click-action', () => { settings.leftClickAction = $('left-click-action').value; });
   bindCheck('always-multiple', () => { settings.alwaysMultipleSelection = $('always-multiple').checked; });
   bindCheck('show-notifications', () => { settings.showNotifications = $('show-notifications').checked; });
+
+  bindCheck('offline-dict', () => {
+    settings.offlineDict = $('offline-dict').checked;
+    render();
+  });
+  bindSel('dict-source', () => { settings.dictSource = $('dict-source').value; });
+  $('dict-mirror').addEventListener('input', () => {
+    const v = $('dict-mirror').value.trim();
+    settings.dictMirror = v;
+    save();
+  });
+  $('dict-list').addEventListener('click', (e) => {
+    const installBtn = e.target.closest('[data-dict-install]');
+    if (installBtn) { installDict(installBtn.dataset.dictInstall); return; }
+    const removeBtn = e.target.closest('[data-dict-remove]');
+    if (removeBtn) { removeDict(removeBtn.dataset.dictRemove); }
+  });
   bindCheck('debug', () => { settings.debug = $('debug').checked; });
 
   bindCheck('enabled', () => { settings.enabled = $('enabled').checked; });
@@ -454,6 +726,7 @@ function bind() {
     uiLang = $('lang-select').value;
     settings.uiLang = uiLang;
     applyI18n();
+    renderDictList();
     save();
   });
 
@@ -465,7 +738,7 @@ function bind() {
     });
   });
 
-  const SETTINGS_SCOPE = ['translator','sourceLanguage','targetLanguage','sentenceTranslation','translationEnabled','autoPause','leftClickAction','alwaysMultipleSelection','showNotifications','debug'];
+  const SETTINGS_SCOPE = ['translator','sourceLanguage','targetLanguage','sentenceTranslation','translationEnabled','autoPause','leftClickAction','alwaysMultipleSelection','showNotifications','offlineDict','dictSource','debug'];
   $('reset-settings').addEventListener('click', () => {
     for (const k of SETTINGS_SCOPE) settings[k] = DEFAULT_SETTINGS[k];
     render();
@@ -554,6 +827,7 @@ async function init() {
   applyI18n();
   render();
   bind();
+  refreshDictState();
 }
 
 init();

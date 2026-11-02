@@ -69,6 +69,33 @@
         <span class="kt-switch"><input type="checkbox" id="sentence-translation"><i></i></span>
       </label>
 
+      <div class="kt-group-title" data-i18n="groupDict">离线词典</div>
+
+      <label class="kt-row kt-row-switch">
+        <span data-i18n="offlineDict">使用离线词典（优先使用本地释义）</span>
+        <span class="kt-switch"><input type="checkbox" id="offline-dict"><i></i></span>
+      </label>
+
+      <label class="kt-row">
+        <span data-i18n="dictPriority">释义优先级</span>
+        <select id="dict-source">
+          <option value="auto" data-i18n="dictAuto">离线优先（查不到走在线）</option>
+          <option value="offline" data-i18n="dictOfflineOnly">仅离线（查不到就不显示）</option>
+          <option value="online" data-i18n="dictOnlineOnly">仅在线（不使用离线）</option>
+        </select>
+      </label>
+
+      <div class="kt-dict-list" id="dict-list">
+        <div class="kt-dict-note" data-i18n="dictLoading">正在读取词典状态…</div>
+      </div>
+
+      <label class="kt-row kt-row-dict-mirror">
+        <span data-i18n="dictMirror">下载镜像（可选）</span>
+        <input type="text" id="dict-mirror" spellcheck="false" placeholder="https://cdn.jsdelivr.net/...">
+      </label>
+
+      <div class="kt-dict-note" data-i18n="dictNote">词典从网络下载后保存在本地，只用于查询释义；扩展不会上传你的任何内容。首次下载约 9 MB，之后可离线使用。</div>
+
       <div class="kt-group-title" data-i18n="groupBehavior">行为</div>
 
       <label class="kt-row kt-row-switch">

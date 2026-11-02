@@ -3,6 +3,7 @@
  * 覆盖：分词 / 设置归一化 / 字幕解析（手动+自动+广播碎片）/ 分块（硬停顿、说话人、标点）/ 句子翻译单元（句末切分、短句合并、逗号截断、定位）/ 气泡挂载与孤儿清理
  */
 import fs from 'node:fs';
+import nodeCrypto from 'node:crypto';
 import vm from 'node:vm';
 
 const code = fs.readFileSync(process.argv[2], 'utf8');
@@ -242,6 +243,7 @@ console.log('\n-- 音标（后台查表）--');
 const bgCode = fs.readFileSync(new URL('../src/background.js', import.meta.url), 'utf8');
 const FAKE_TSV = '# 注释行应被跳过\nthe\tðə;ði\nread\triːd;red\nknown\tnoʊn\nsentiment\tˈsentəmənt\n';
 let bgListener = null;
+let bgConnect = null;
 const bgCtx = vm.createContext({
   console,
   URLSearchParams,
@@ -249,10 +251,16 @@ const bgCtx = vm.createContext({
   setTimeout,
   clearTimeout,
   fetch: async () => ({ text: async () => FAKE_TSV }),
+  /* background.js 用 importScripts 载入 dict.js：这里用假实现，让 __ktDict 也能在测试里注册 */
+  importScripts: (name) => {
+    if (name === 'dict.js') vm.runInContext(fs.readFileSync(new URL('../src/dict.js', import.meta.url), 'utf8'), bgCtx);
+  },
+  Blob, Response, DecompressionStream, crypto, indexedDB: undefined,
   chrome: {
     runtime: {
       getURL: (p) => 'chrome-extension://fake/' + p,
       onMessage: { addListener: (fn) => { bgListener = fn; } },
+      onConnect: { addListener: (fn) => { bgConnect = fn; } },
       onInstalled: { addListener: () => {} },
       lastError: null,
     },
@@ -292,6 +300,107 @@ assert(findIpa('read').split(';')[0] === 'ˈriːd', 'read 首选 /ˈriːd/（常
 assert(findIpa('was').split(';')[0] === 'wəz', 'was 首选 /wəz/（常用读音优先表），got ' + findIpa('was'));
 assert(findIpa('record').split(';')[0] === 'ˈrekərd', 'record 首选 /ˈrekərd/（常用读音优先表），got ' + findIpa('record'));
 assert(!/\n/.test(findIpa('sentiment')), 'sentiment 音标不含换行（数据格式干净）');
+
+
+/* ================= 18. 离线词典：哈希 / 归一化 / 分片一致性 ================= */
+console.log('\n-- 离线词典（纯函数与分片清单）--');
+const dictCode = fs.readFileSync(new URL('../src/dict.js', import.meta.url), 'utf8');
+const dictCtx = { console, Blob, Response, DecompressionStream, crypto, indexedDB: undefined };
+dictCtx.globalThis = dictCtx;
+vm.runInContext(dictCode, vm.createContext(dictCtx));
+const dictApi = dictCtx.__ktDict;
+assert(!!dictApi, 'dict.js 暴露 __ktDict');
+assert(typeof dictApi.keyHash === 'function' && typeof dictApi.bucketOf === 'function', 'dict.js 暴露 keyHash / bucketOf');
+
+/* 与 tools/build_dicts.py 的 key_hash 对照（9 个样本，含中文/连字符/所有格/重音符） */
+const HASH_SAMPLES = [
+  ['additional', 3380609436, '1c'],
+  ['Sentiment', 2548053074, '12'],
+  ['well-known', 1138059355, '1b'],
+  ["ain't", 3261857256, '08'],
+  ['the', 3020861980, '1c'],
+  ['understood', 2400623196, '1c'],
+  ['情绪', 2841717598, '1e'],
+  ['繁體', 1697012680, '08'],
+  ['naïve', 921279308, '0c'],
+];
+for (const [word, expectedHash, expectedBucket] of HASH_SAMPLES) {
+  assert(dictApi.keyHash(word) === expectedHash, 'keyHash("' + word + '") = ' + expectedHash + '，got ' + dictApi.keyHash(word));
+  assert(dictApi.bucketOf(word) === expectedBucket, 'bucketOf("' + word + '") = ' + expectedBucket + '，got ' + dictApi.bucketOf(word));
+}
+
+/* 归一化与回退顺序 */
+assert(JSON.stringify(dictApi.candidateKeys('The')) === JSON.stringify(['the']), 'candidateKeys("The") → ["the"]');
+assert(JSON.stringify(dictApi.candidateKeys("Word's")) === JSON.stringify(["word's", 'word']), 'candidateKeys("Word\'s") → 所有格回退');
+assert(JSON.stringify(dictApi.candidateKeys('well-known')) === JSON.stringify(['well-known', 'wellknown', 'known']), 'candidateKeys("well-known") → 连字符回退');
+assert(JSON.stringify(dictApi.candidateKeys('“Hello!”')) === JSON.stringify(['hello']), 'candidateKeys 去掉首尾标点');
+assert(JSON.stringify(dictApi.candidateKeys('123')) === JSON.stringify([]), 'candidateKeys 纯数字 → 空');
+assert(dictApi.CJK_RE.test('情绪') === true && dictApi.CJK_RE.test('sentiment') === false, 'CJK_RE 区分中英文');
+assert(JSON.stringify(dictApi.dictOrderFor('情绪')) === JSON.stringify(['cedict']), '中文词只查 CC-CEDICT');
+assert(JSON.stringify(dictApi.dictOrderFor('sentiment')) === JSON.stringify(['ecdict', 'wordnet']), '英文词先 ECDICT 再 WordNet');
+
+/* 清单与分片：条目数 / 分片数 / 文件存在性 / sha256 与表内一致 */
+const catalog = JSON.parse(fs.readFileSync(new URL('../src/data/dict-catalog.json', import.meta.url), 'utf8'));
+assert(catalog.buckets === 32, '清单 buckets = 32');
+assert(Object.keys(catalog.dicts).length === 3, '清单含 3 个词典');
+assert(catalog.dicts.ecdict.entries === 401606, 'ECDICT 条目数 401606，got ' + catalog.dicts.ecdict.entries);
+assert(catalog.dicts.wordnet.entries === 82810, 'WordNet 条目数 82810，got ' + catalog.dicts.wordnet.entries);
+assert(catalog.dicts.cedict.entries === 198553, 'CC-CEDICT 条目数 198553，got ' + catalog.dicts.cedict.entries);
+assert(catalog.dicts.ecdict.role === 'primary' && catalog.dicts.wordnet.role === 'backup', 'ECDICT 为主选，其余为备用');
+assert(catalog.dicts.ecdict.license === 'MIT' && catalog.dicts.cedict.license === 'CC BY-SA 4.0' && catalog.dicts.wordnet.license === 'WordNet License', '三个词典的许可标注正确');
+
+for (const id of Object.keys(catalog.dicts)) {
+  const info = catalog.dicts[id];
+  const buckets = Object.keys(info.shards);
+  assert(buckets.length === 32, id + ' 有 32 个分片，got ' + buckets.length);
+  const sum = buckets.reduce((acc, b) => acc + info.shards[b].entries, 0);
+  assert(sum === info.entries, id + ' 分片词条数之和 = 清单条目数（' + info.entries + '），got ' + sum);
+  const dir = new URL('../dicts/' + id + '/', import.meta.url);
+  const exists = fs.existsSync(dir);
+  if (exists) {
+    const missing = buckets.filter((b) => !fs.existsSync(new URL(b + '.tsv.gz', dir)));
+    assert(missing.length === 0, id + ' 的 32 个分片文件全部存在，缺失 ' + missing.length);
+    /* 抽 00 分片验 sha256（全量校验太慢，00 足以覆盖格式） */
+    const pick = fs.readFileSync(new URL('00.tsv.gz', dir));
+    const hash = nodeCrypto.createHash('sha256').update(pick).digest('hex');
+    assert(hash === info.shards['00'].sha256, id + '/00.tsv.gz sha256 与清单一致');
+  }
+}
+
+/* 真实查表：解压 ECDICT 的 00 分片，确认 additional/sentiment 能查到 */
+let testedRealLookup = false;
+try {
+  const dir = new URL('../dicts/ecdict/', import.meta.url);
+  if (fs.existsSync(dir)) {
+    const gz = fs.readFileSync(new URL('00.tsv.gz', dir));
+    const text = await dictApi.gunzip(gz);
+    const map = dictApi.parseTsv(text);
+    assert(map.size > 0, 'ECDICT 00 分片可解压并解析，got ' + map.size + ' 行');
+    /* 直接读分片文件找词：按 bucketOf 定位到唯一分片，确认能查到中文释义 */
+    for (const word of ['additional', 'sentiment', 'understood', 'the']) {
+      const bucket = dictApi.bucketOf(word);
+      const gz = fs.readFileSync(new URL(bucket + '.tsv.gz', dir));
+      const shardMap = dictApi.parseTsv(await dictApi.gunzip(gz));
+      const hit = shardMap.get(word);
+      assert(!!hit, 'ECDICT ' + bucket + ' 分片命中 ' + word);
+      if (hit) {
+        testedRealLookup = true;
+        assert(/[\u4e00-\u9fff]/.test(hit), word + ' 的释义含中文 → ' + hit.slice(0, 36));
+      }
+    }
+    assert(testedRealLookup, 'ECDICT 分片的词条能端到端读出（bucketOf → 解压 → 查表）');
+    /* 归一化回退：带引号/大写的字幕词也能命中 */
+    const styled = dictApi.candidateKeys('“Sentiment,”');
+    assert(styled[0] === 'sentiment', '字幕里的 “Sentiment,” 归一化为 sentiment，got ' + styled[0]);
+    const sBucket = dictApi.bucketOf('sentiment');
+    const sMap = dictApi.parseTsv(await dictApi.gunzip(fs.readFileSync(new URL(sBucket + '.tsv.gz', dir))));
+    assert(!!sMap.get('sentiment'), '归一化后的 sentiment 在 ' + sBucket + ' 分片命中');
+  } else {
+    console.log('SKIP: dicts/ecdict 不存在（词典包未生成），跳过真实查表');
+  }
+} catch (e) {
+  assert(false, 'ECDICT 分片解压/解析失败：' + String((e && e.message) || e));
+}
 
 console.log('\n==== ' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED') + ' ====');
 process.exit(failed === 0 ? 0 : 1);

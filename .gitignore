@@ -5,6 +5,8 @@ dist/
 _reference/
 
 node_modules/
+__pycache__/
+*.pyc
 *.tgz
 *.zip
 .DS_Store
@@ -31,3 +33,6 @@ node_modules/
 # Cloudflare Worker 本地缓存与本地密钥文件（可能含敏感值）
 .wrangler/
 .dev.vars
+
+# 生成的词典分片（只进 dict-v1 分支，不进 main/test 代码历史）
+/dicts/

@@ -1,0 +1,631 @@
+{
+  "version": 1,
+  "buckets": 32,
+  "cdn": "https://cdn.jsdelivr.net/gh/weijianluo114-ux/subtitle-translator@dict-v1/dicts",
+  "dicts": {
+    "cedict": {
+      "name": "CC-CEDICT 汉英词典",
+      "nameEn": "CC-CEDICT (Chinese–English)",
+      "license": "CC BY-SA 4.0",
+      "source": "https://www.mdbg.net/chinese/dictionary?page=cc-cedict",
+      "lang": "zh",
+      "role": "backup",
+      "desc": "社区维护的汉英词典：20 万词条（简繁同收），含拼音与英文释义，用于中文字幕。",
+      "descEn": "Community-maintained Chinese–English dictionary: 200k entries (simplified + traditional) with pinyin and English glosses, for Chinese subtitles.",
+      "entries": 198553,
+      "bytes": 6639627,
+      "rawBytes": 13396591,
+      "shards": {
+        "00": {
+          "entries": 6172,
+          "raw": 417406,
+          "bytes": 207312,
+          "sha256": "b18378c2b50861eb6e3e250880ab4a214f9e0d0de06cd7ed3f7a357465384586"
+        },
+        "01": {
+          "entries": 6021,
+          "raw": 403709,
+          "bytes": 199918,
+          "sha256": "aca85f4ca97958e64a5237b7081e0936038cc39ae8abfbd8a2ad80324343e7d1"
+        },
+        "02": {
+          "entries": 6122,
+          "raw": 406601,
+          "bytes": 201504,
+          "sha256": "fe182f300cb31e8c536deaa5399da8d855febcd41ffba2329426cc148330c614"
+        },
+        "03": {
+          "entries": 6295,
+          "raw": 426776,
+          "bytes": 211158,
+          "sha256": "b699a337bce930565c88f92db0e771fe87cabd556d883da732f919cddcfc74e2"
+        },
+        "04": {
+          "entries": 6120,
+          "raw": 418072,
+          "bytes": 207323,
+          "sha256": "6c4c733386b491ffdd2425549aa46f48d8ed2a5526fc6c58d681293897a91fd8"
+        },
+        "05": {
+          "entries": 6229,
+          "raw": 419184,
+          "bytes": 207110,
+          "sha256": "33b02d530275c4f24de800387f5dd41bd07e68d1b88dbaf4a3e8c78c03c31775"
+        },
+        "06": {
+          "entries": 6096,
+          "raw": 411294,
+          "bytes": 204056,
+          "sha256": "2f9a4f2016acc5291858f86de890f2b21260367ae91eb4bc37369f97d87cf9d5"
+        },
+        "07": {
+          "entries": 6278,
+          "raw": 422951,
+          "bytes": 208974,
+          "sha256": "1e8bcc284c5f59813cc16d7fd8c303cd942d41bf8e8d0223ba7cfaa436a840cc"
+        },
+        "08": {
+          "entries": 6172,
+          "raw": 419789,
+          "bytes": 208528,
+          "sha256": "3d0e42e5aa13887d31c9c368ad80362e6f66764079cb5c16114148ae740dccdb"
+        },
+        "09": {
+          "entries": 6086,
+          "raw": 411998,
+          "bytes": 203476,
+          "sha256": "32aaa21e25ff9c47851bab2971fbfd84b48bf38c8831e87ed3bdde7a5d6c11d8"
+        },
+        "0a": {
+          "entries": 6113,
+          "raw": 414688,
+          "bytes": 205941,
+          "sha256": "16220454af13d720321f16f4a45aad8107d9359947123f0f3b20da5558cd0c94"
+        },
+        "0b": {
+          "entries": 6375,
+          "raw": 423555,
+          "bytes": 210410,
+          "sha256": "7c91d2b133f17ad89034a7eb77c2870466874af38950b5463bac4564707a20bd"
+        },
+        "0c": {
+          "entries": 6155,
+          "raw": 414181,
+          "bytes": 205652,
+          "sha256": "2a62dee5be87bbf180090642ddbb2ea943b897702d6aac7eed31cc1e35b20666"
+        },
+        "0d": {
+          "entries": 6306,
+          "raw": 423100,
+          "bytes": 209173,
+          "sha256": "8fd2c595afa98a86ed1e873f03032c877317d234b709b227fc61ff7e5f7627e3"
+        },
+        "0e": {
+          "entries": 6209,
+          "raw": 415130,
+          "bytes": 205737,
+          "sha256": "f9f1bc65c211e6bc3b845f8f9cdeae56a4f5059c260f8e3d7f987a37f541f709"
+        },
+        "0f": {
+          "entries": 6179,
+          "raw": 412609,
+          "bytes": 205520,
+          "sha256": "ab7d15805428d56fc24dce28dd3164d7771f5324446e8f46e9681c27d4cce8ff"
+        },
+        "10": {
+          "entries": 6196,
+          "raw": 418780,
+          "bytes": 207192,
+          "sha256": "5e9a43f3f169bc4172956f235b28b9cdc26e3a9674dd4d5214dcb0ef5d8f280e"
+        },
+        "11": {
+          "entries": 6287,
+          "raw": 426847,
+          "bytes": 210790,
+          "sha256": "eb05c6dbad80db8263825b8abc689b90ce16356d9dca182cb8be3f61cd9be9b6"
+        },
+        "12": {
+          "entries": 6288,
+          "raw": 421447,
+          "bytes": 208986,
+          "sha256": "c99ce70ffc898b6e8a8c4fc754e835d354f12becd8b0785156c7ce60cf71bcb4"
+        },
+        "13": {
+          "entries": 6374,
+          "raw": 425820,
+          "bytes": 209952,
+          "sha256": "b7fadf9b6f381d7cd7c0515fec2320e09f746b405d74c59e984c92c04d725857"
+        },
+        "14": {
+          "entries": 6299,
+          "raw": 420446,
+          "bytes": 208212,
+          "sha256": "23316e76f561a137caad310f8349319cb062c7f35dacbc3cf683923babbb47be"
+        },
+        "15": {
+          "entries": 6382,
+          "raw": 436739,
+          "bytes": 215456,
+          "sha256": "e52d1deb39d485c69ffc00631be5ba908089710f6dc5909b70f9256e417f8cbf"
+        },
+        "16": {
+          "entries": 6235,
+          "raw": 429160,
+          "bytes": 211988,
+          "sha256": "bebb049fa95edec1dbb260a954b77c189570ad18ceda935d228de3fd3d3705da"
+        },
+        "17": {
+          "entries": 6137,
+          "raw": 415331,
+          "bytes": 206730,
+          "sha256": "861cc7a6e33dc42f200af55f4898e8980b587321e4c5fbc7892abba93316dc08"
+        },
+        "18": {
+          "entries": 6194,
+          "raw": 420055,
+          "bytes": 208637,
+          "sha256": "b0ef230a7df64c024b5ff20cebe8bdbbc51e18af38c26e6cb0e64f9648c52e2a"
+        },
+        "19": {
+          "entries": 6093,
+          "raw": 412281,
+          "bytes": 204639,
+          "sha256": "f903c41cc7ac58873d1b0db1fa0a58f2bb0dd21fac0b59ace870c7ce6814788c"
+        },
+        "1a": {
+          "entries": 6288,
+          "raw": 422607,
+          "bytes": 209890,
+          "sha256": "f4cccb6ad9c9fd7b4df3d789bbb540bc50dec8c53839e0755dca931ecc2dfd81"
+        },
+        "1b": {
+          "entries": 6120,
+          "raw": 413667,
+          "bytes": 205083,
+          "sha256": "98f3f3a0853a98022d1ff39e37948686cbc8f04ad8aecf2939b378edc348247c"
+        },
+        "1c": {
+          "entries": 6138,
+          "raw": 414513,
+          "bytes": 206095,
+          "sha256": "83e7620b64a74c9b590107928d630e1936645d53d44ccca9b3d6783df94cc47f"
+        },
+        "1d": {
+          "entries": 6236,
+          "raw": 421279,
+          "bytes": 208779,
+          "sha256": "949ac5dc823aac05d72bc5c596fed7ddab3d3f1c8ae0dc4eee44b89403e545ab"
+        },
+        "1e": {
+          "entries": 6160,
+          "raw": 416688,
+          "bytes": 207678,
+          "sha256": "35dec9241e7b58ef6c3bfe98179001e77d42b4731de1e1049e8d7e741a877158"
+        },
+        "1f": {
+          "entries": 6198,
+          "raw": 419888,
+          "bytes": 207728,
+          "sha256": "b5eb3a3e3d49eccfd44a1bfb3b35623cbd7c3aa2833521806ed7e103d70b8768"
+        }
+      },
+      "buckets": 32
+    },
+    "ecdict": {
+      "name": "ECDICT 英汉词典",
+      "nameEn": "ECDICT (English–Chinese)",
+      "license": "MIT",
+      "source": "https://github.com/skywind3000/ECDICT",
+      "lang": "en",
+      "role": "primary",
+      "desc": "最全的开源英汉词典：40 万词条，含词性、中文释义与专业术语。",
+      "descEn": "The most complete open English–Chinese dictionary: 400k entries with part of speech, Chinese glosses and technical terms.",
+      "entries": 401606,
+      "bytes": 9431535,
+      "rawBytes": 18932480,
+      "shards": {
+        "00": {
+          "entries": 12431,
+          "raw": 593116,
+          "bytes": 296044,
+          "sha256": "e3a5da23d24365553d79441142b154eaeb9d7080791ce574e60fbe52e1528370"
+        },
+        "01": {
+          "entries": 12570,
+          "raw": 588704,
+          "bytes": 294557,
+          "sha256": "41ca80c23afafa4c6966dca2b15cd99ded208381d9af709168dce442f8b82c3a"
+        },
+        "02": {
+          "entries": 12588,
+          "raw": 585821,
+          "bytes": 291192,
+          "sha256": "0a682d7e045bf0fd664b796f2c637c90a8a2768fee36a00fbb24c728e1cdb723"
+        },
+        "03": {
+          "entries": 12599,
+          "raw": 595246,
+          "bytes": 295748,
+          "sha256": "3bf0d5220e70fe6ba36f73e50845e3f532612d6ee7a419a716fc92db96c4fa1f"
+        },
+        "04": {
+          "entries": 12395,
+          "raw": 586403,
+          "bytes": 292271,
+          "sha256": "ba971710681fa6fa5de6fb0c1011a28c80080f4826945ceff4787a95973f797e"
+        },
+        "05": {
+          "entries": 12480,
+          "raw": 584266,
+          "bytes": 291197,
+          "sha256": "3c98f14857b1b6850e6d45f66a9d1e66938df3dcef6cc418b2059432629c084a"
+        },
+        "06": {
+          "entries": 12721,
+          "raw": 603145,
+          "bytes": 300154,
+          "sha256": "1a8af68ce5b3c86bff0b4bad2173d09802e6642d20042f07ad10d4fdbf2d1864"
+        },
+        "07": {
+          "entries": 12460,
+          "raw": 584581,
+          "bytes": 292062,
+          "sha256": "f14d5f56159fce599e6dad526cedbc91d906225e4d4caa806a68a55d908f637e"
+        },
+        "08": {
+          "entries": 12359,
+          "raw": 580296,
+          "bytes": 289609,
+          "sha256": "f351e961a508ed340685094fa5ba27c3f805b6c6fdfdc1695d42efb6f2010944"
+        },
+        "09": {
+          "entries": 12729,
+          "raw": 609649,
+          "bytes": 303982,
+          "sha256": "7bca64f4dcb873a7c60599edb88d24ff3535bc0a0036db052c7e3e27c8d577a3"
+        },
+        "0a": {
+          "entries": 12545,
+          "raw": 588253,
+          "bytes": 292446,
+          "sha256": "f8e69a4d5ea97de588f7b729d92c22eae75d41e12ed838c62949550e16b265fa"
+        },
+        "0b": {
+          "entries": 12494,
+          "raw": 591031,
+          "bytes": 293090,
+          "sha256": "86859e22216b2bcd6f375fb55f4616226f3814c1c5029a269faf721087de6604"
+        },
+        "0c": {
+          "entries": 12649,
+          "raw": 593756,
+          "bytes": 295431,
+          "sha256": "b6fd21bbff95efd956596fd6821ed9c1863fd483d4e8f64afff9154b8929e81e"
+        },
+        "0d": {
+          "entries": 12472,
+          "raw": 592337,
+          "bytes": 296309,
+          "sha256": "b587c1267d97c36969f0a92cc37104fb732a8628e34b6e5fffd9bebe0335fc4c"
+        },
+        "0e": {
+          "entries": 12597,
+          "raw": 599303,
+          "bytes": 297564,
+          "sha256": "cb26dad31d1df043fbe420f6b99c178507cd07d2c6294a6487b227d885f8636e"
+        },
+        "0f": {
+          "entries": 12625,
+          "raw": 594554,
+          "bytes": 296191,
+          "sha256": "5856aa7277a710c15442bf79d35763a04c46268bbae7df25ff60078f06201c3c"
+        },
+        "10": {
+          "entries": 12443,
+          "raw": 584234,
+          "bytes": 291434,
+          "sha256": "702efd227bf1183e6a1e08acd9911ded5cd85dea6a94c2eff41dd6b724afcaa5"
+        },
+        "11": {
+          "entries": 12765,
+          "raw": 596024,
+          "bytes": 297220,
+          "sha256": "4c6ceb3671f0eb3bbaab1c5ecc07ba9641469853151fcf664fcc71e4e373599b"
+        },
+        "12": {
+          "entries": 12543,
+          "raw": 593591,
+          "bytes": 295569,
+          "sha256": "1fb4fed9b8b38cb26ac64e2c9288d4330924b6b7c74270823a0100ae270b8ffd"
+        },
+        "13": {
+          "entries": 12613,
+          "raw": 591935,
+          "bytes": 294471,
+          "sha256": "2a83d4c6f2663496f24d99353a8378e4a53d9588cc570592f80d1bdd6fdfc88a"
+        },
+        "14": {
+          "entries": 12561,
+          "raw": 593540,
+          "bytes": 295904,
+          "sha256": "644a6fdf4da7b4773b9a98efc59bca0d8e748cc6bf63d6a90d2d7cb13bdf29f9"
+        },
+        "15": {
+          "entries": 12630,
+          "raw": 595760,
+          "bytes": 296262,
+          "sha256": "3c1ed3cb57196846a4c58355d32007c520505383e1e6915964dd0c8c830b493f"
+        },
+        "16": {
+          "entries": 12407,
+          "raw": 587295,
+          "bytes": 291628,
+          "sha256": "78a413c2c1f3ec3bdb22eeff172a2732fbebb5d0e52f558e82d48b142de82cf5"
+        },
+        "17": {
+          "entries": 12828,
+          "raw": 605952,
+          "bytes": 301960,
+          "sha256": "660b06f9c2a2130da6963f781b169ab8fb04f41c61e51fd43fcee90259731038"
+        },
+        "18": {
+          "entries": 12572,
+          "raw": 587156,
+          "bytes": 293930,
+          "sha256": "eb6351ec1b5aa4b8c3eca3011f0ace9e145ba44d9532b6f84dc8fca5ac1078cb"
+        },
+        "19": {
+          "entries": 12511,
+          "raw": 584754,
+          "bytes": 291117,
+          "sha256": "b800ba2bc924949916be367a4c8c9459232b3493e1401c44e1d6c73d6369e8bd"
+        },
+        "1a": {
+          "entries": 12582,
+          "raw": 591223,
+          "bytes": 292662,
+          "sha256": "071f8c5bd10f0580f174670df4bdd4e089fbe4f058cbfeebbaa7c3e7298662d0"
+        },
+        "1b": {
+          "entries": 12511,
+          "raw": 597048,
+          "bytes": 295365,
+          "sha256": "d922bf5d0981a3b02edbed86147dac07ab30e11d4eef267566c69686abb0bcd3"
+        },
+        "1c": {
+          "entries": 12478,
+          "raw": 588911,
+          "bytes": 294575,
+          "sha256": "b802058b68c1b0ada89c397c315bafdc2eca2d21ee864d975855de9530cbb32f"
+        },
+        "1d": {
+          "entries": 12315,
+          "raw": 589500,
+          "bytes": 295074,
+          "sha256": "30fccb7cd3a907c9a8d107abf3200dcfd032c5be9eb2985a63bbfc429e13beda"
+        },
+        "1e": {
+          "entries": 12609,
+          "raw": 586291,
+          "bytes": 292886,
+          "sha256": "b4f280b97d7c50b7f1889fdaed52afb23bd0b5942d0ce964e2c554dcd7a88f81"
+        },
+        "1f": {
+          "entries": 12524,
+          "raw": 588805,
+          "bytes": 293631,
+          "sha256": "7333a00d4144cecba24c90e759684e72b923b77e17c9e38b3ae638200eee754a"
+        }
+      },
+      "buckets": 32
+    },
+    "wordnet": {
+      "name": "WordNet 3.1 英英词典",
+      "nameEn": "WordNet 3.1 (English–English)",
+      "license": "WordNet License",
+      "source": "https://wordnet.princeton.edu/",
+      "lang": "en",
+      "role": "backup",
+      "desc": "普林斯顿大学 WordNet：8.2 万英文词，英英释义（ECDICT 查不到时兜底）。",
+      "descEn": "Princeton WordNet: 82k English words with English definitions (fallback when ECDICT has no entry).",
+      "entries": 82810,
+      "bytes": 3006537,
+      "rawBytes": 7412094,
+      "shards": {
+        "00": {
+          "entries": 2551,
+          "raw": 227697,
+          "bytes": 92437,
+          "sha256": "1f023200f80aa0b3de48b6c4d847a715cce378f19ed6494c2b9a70ea6ca19975"
+        },
+        "01": {
+          "entries": 2606,
+          "raw": 231264,
+          "bytes": 93708,
+          "sha256": "626839f403db0b23d0ed312491703b7114cb3a837be9a2a0c80660a94adeb3c5"
+        },
+        "02": {
+          "entries": 2578,
+          "raw": 232466,
+          "bytes": 94265,
+          "sha256": "c15dd67be19462ef84aff596fa22d3be8b71cb1dd4c8baf9271b52a570b06f15"
+        },
+        "03": {
+          "entries": 2552,
+          "raw": 226317,
+          "bytes": 91871,
+          "sha256": "950b41db346dbc91284510a4b846d85e44cada786d49e56269e60dd431ec9a9d"
+        },
+        "04": {
+          "entries": 2623,
+          "raw": 239313,
+          "bytes": 97265,
+          "sha256": "4c56707ba666d6e1b4b8fd1610219b99f7097cda6b58cfa2dd8b210431859ec7"
+        },
+        "05": {
+          "entries": 2580,
+          "raw": 233791,
+          "bytes": 94503,
+          "sha256": "ebd6bac470d681790c5974b4dc0a6c6e64414924204ff81463cc6ab03a1608cb"
+        },
+        "06": {
+          "entries": 2665,
+          "raw": 239597,
+          "bytes": 97068,
+          "sha256": "3956678b74bcff816c961aecb54104f2435a6a3faa549891a981c1e193a03053"
+        },
+        "07": {
+          "entries": 2576,
+          "raw": 233245,
+          "bytes": 94686,
+          "sha256": "e7e8ccddaa870796aeb85759abec7481b43dfb3c6462b12054435bc081121e55"
+        },
+        "08": {
+          "entries": 2579,
+          "raw": 233526,
+          "bytes": 94500,
+          "sha256": "0d6e8e7fbe23bb00b6da291653a0d240fb21471d2e62893388d45c52ed630b6c"
+        },
+        "09": {
+          "entries": 2574,
+          "raw": 235502,
+          "bytes": 95696,
+          "sha256": "8fdb4eb9fcda65a4108340ce9c8623521cb53979d798721890e57e6dd8278d7f"
+        },
+        "0a": {
+          "entries": 2615,
+          "raw": 239583,
+          "bytes": 97249,
+          "sha256": "1ed7ef04ad6c8c9398ab3fbbd0b604bb2cc6bf18f67108183976f6f4c4e5abd0"
+        },
+        "0b": {
+          "entries": 2616,
+          "raw": 232773,
+          "bytes": 94518,
+          "sha256": "46b00c0c34394a413218bc3aca6b46776b296e5e0628362619e4c6ebe68c7fcc"
+        },
+        "0c": {
+          "entries": 2647,
+          "raw": 235772,
+          "bytes": 95895,
+          "sha256": "54b6571ed1cdcdbdb15e1796eb0a5c718f5c4b95a800761788452bceae8c3981"
+        },
+        "0d": {
+          "entries": 2543,
+          "raw": 226229,
+          "bytes": 92276,
+          "sha256": "076a947a7592bdefc313e67bfac1fd3c1162e05ccb0b57e8bd0eac633ae9ef30"
+        },
+        "0e": {
+          "entries": 2601,
+          "raw": 233486,
+          "bytes": 94304,
+          "sha256": "e0ee4e4c9dc71bd3fa53fae19b0721ab05a2e6452d7a3246df5b299cef680e1c"
+        },
+        "0f": {
+          "entries": 2617,
+          "raw": 233557,
+          "bytes": 94799,
+          "sha256": "8695f8d16049fb57f3082d1d0a5a9fac62d7803af54a10da3eed490f8e61c2a1"
+        },
+        "10": {
+          "entries": 2603,
+          "raw": 229762,
+          "bytes": 93414,
+          "sha256": "5235ede6d1f8fd4b2bc96d909c0c431fba488518e04cd4022d0a5f84135065ad"
+        },
+        "11": {
+          "entries": 2613,
+          "raw": 232703,
+          "bytes": 94673,
+          "sha256": "3fcf040f93d67214a8798fd739c01390d1c6db1af13e58bab726077f5856ab99"
+        },
+        "12": {
+          "entries": 2622,
+          "raw": 239590,
+          "bytes": 97166,
+          "sha256": "3713b1f30061f4a06311f8c0a53fb83943e2067c530cd28bab62903f77ae07df"
+        },
+        "13": {
+          "entries": 2572,
+          "raw": 232058,
+          "bytes": 94251,
+          "sha256": "07c869fcdafde7097c1c9aeb1fb30e1703057d60959af2c1fa62a6ca09b3a917"
+        },
+        "14": {
+          "entries": 2577,
+          "raw": 228901,
+          "bytes": 92934,
+          "sha256": "67792302a0b3e350d2678721cf2a656bc082829b7094724903d5c50e0d9ebd50"
+        },
+        "15": {
+          "entries": 2546,
+          "raw": 227408,
+          "bytes": 91886,
+          "sha256": "47c17f849cd88cb114deb3de269b30eb7b67ccd5028c1d94ca640857ad17c344"
+        },
+        "16": {
+          "entries": 2542,
+          "raw": 227788,
+          "bytes": 92774,
+          "sha256": "896965ace93df648ef228ead38d558258b39ccfbfffa4dd02982302b974fde56"
+        },
+        "17": {
+          "entries": 2649,
+          "raw": 238327,
+          "bytes": 96083,
+          "sha256": "86fe39dac9c8f089f5bc3ec8340be4445feeb6365b02efa443eb7eb78d33f0c2"
+        },
+        "18": {
+          "entries": 2617,
+          "raw": 231719,
+          "bytes": 94023,
+          "sha256": "1db2c89f3f8f03c5079be9d7271f798b3f0114ea6a45e1735b0583d16724527a"
+        },
+        "19": {
+          "entries": 2547,
+          "raw": 225586,
+          "bytes": 91147,
+          "sha256": "c1521f852e5812a1c792e2e7cec00551b86eec2fdb7391b9a1ae0e2485828d7f"
+        },
+        "1a": {
+          "entries": 2611,
+          "raw": 232221,
+          "bytes": 93948,
+          "sha256": "e8d5701a3418580902d443545397b502a85c9f3b644701a242cd8e3d36762021"
+        },
+        "1b": {
+          "entries": 2580,
+          "raw": 229063,
+          "bytes": 92993,
+          "sha256": "f855863f9217f606a57e9b07115a781f62f5cfc2b872598a47a4b4d93baa27b7"
+        },
+        "1c": {
+          "entries": 2571,
+          "raw": 228144,
+          "bytes": 92175,
+          "sha256": "5a9a006f62a819a764e88c8237e74dc02115e687ddc9c6214c6627d5437523be"
+        },
+        "1d": {
+          "entries": 2484,
+          "raw": 219783,
+          "bytes": 89440,
+          "sha256": "be73a8a7445921c310aeb22ef58bccc1f38639d50b99e60ba2f26e7eb01f7689"
+        },
+        "1e": {
+          "entries": 2552,
+          "raw": 222930,
+          "bytes": 90409,
+          "sha256": "29db0a404f6c7e176c9610d1de096ce18723a947616f412a2bc48a79d5524313"
+        },
+        "1f": {
+          "entries": 2601,
+          "raw": 231993,
+          "bytes": 94181,
+          "sha256": "2794d15a91cd75a238849f68f15ac2ba837e7b097b705c87be2b7d031d8e131b"
+        }
+      },
+      "buckets": 32
+    }
+  }
+}

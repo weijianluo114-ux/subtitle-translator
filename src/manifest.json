@@ -2,11 +2,14 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "short_name": "SubtitleTranslator",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "__MSG_extDesc__",
   "default_locale": "zh_CN",
   "minimum_chrome_version": "88",
-  "permissions": ["storage", "scripting"],
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
   "host_permissions": [
     "*://www.youtube.com/*",
     "*://m.youtube.com/*",
@@ -14,7 +17,9 @@
     "https://translate.google.com/*",
     "https://www.bing.com/*",
     "https://api.mymemory.translated.net/*",
-    "https://kt-feedback.weijianluo114.workers.dev/*"
+    "https://kt-feedback.weijianluo114.workers.dev/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://raw.githubusercontent.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -35,16 +40,28 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"],
-      "js": ["storage-bridge.js"],
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://m.youtube.com/*"
+      ],
+      "js": [
+        "storage-bridge.js"
+      ],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": false
     },
     {
-      "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"],
-      "js": ["inject.js"],
-      "css": ["overlay.css"],
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://m.youtube.com/*"
+      ],
+      "js": [
+        "inject.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
       "run_at": "document_start",
       "world": "MAIN",
       "all_frames": false
@@ -52,8 +69,14 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["fonts/*", "fonts/*/*"],
-      "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"]
+      "resources": [
+        "fonts/*",
+        "fonts/*/*"
+      ],
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://m.youtube.com/*"
+      ]
     }
   ]
 }

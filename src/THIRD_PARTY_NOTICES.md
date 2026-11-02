@@ -28,6 +28,24 @@
 - 许可全文：`src/data/CMUDICT-LICENSE.txt`（BSD-2-Clause 要求随分发保留版权声明与免责声明，故完整保留于扩展包内）
 - 规模：125,909 个词条 / 134,996 个读音
 
+
+## 可选离线词典（用户主动下载，默认不随扩展分发）
+
+扩展本体**不包含**以下词典数据，只有当用户在设置里点击「下载」时才会从 CDN 取回分片，
+存进本机扩展源 IndexedDB（`kt-dict`），随时可在界面里删除。
+词典仅用于把单词释义显示在翻译气泡里，**纯本地查表，不上传任何内容**。
+
+| 词典 | 角色 | 词条 | 许可 | 来源 | 许可全文 |
+| --- | --- | --- | --- | --- | --- |
+| ECDICT | 主选（英汉） | 401,606 | MIT | https://github.com/skywind3000/ECDICT | `src/data/ECDICT-LICENSE.txt` |
+| WordNet 3.1 | 备用（英英） | 82,810 | WordNet License | https://wordnet.princeton.edu/ | `src/data/WORDNET-LICENSE.txt` |
+| CC-CEDICT | 备用（汉英） | 198,553 | CC BY-SA 4.0 | https://www.mdbg.net/chinese/dictionary?page=cc-cedict | `src/data/CC-BY-SA-4.0.txt` |
+
+- 生成脚本：`tools/build_dicts.py`（可复现：把上游原始数据按统一格式切分成 32 个 hash 分片并 gzip）
+- 清单与校验：`src/data/dict-catalog.json` 记录每个分片的条目数、字节数与 **sha256**；下载后逐片校验，不匹配即丢弃
+- 托管地址：仓库 orphan 分支 `dict-v1`（`cdn.jsdelivr.net/gh/weijianluo114-ux/subtitle-translator@dict-v1/dicts`，失败回退 `raw.githubusercontent.com`）
+- **CC BY-SA 4.0 义务**：CC-CEDICT 是「改编后分发」的词典数据，我们保留了原作者署名（MDBG / CC-CEDICT 社区）、许可链接与许可全文，且该数据分片本身同样以 CC BY-SA 4.0 提供
+
 ## 图标
 
 `src/icons/*.png` 为本项目生成的原创简易图标，可自由替换。
@@ -37,4 +55,5 @@
 - 无悬停翻译操作时：插件不产生任何对外网络请求（仅读取 YouTube 页面自身的字幕请求响应）。
 - 悬停翻译 / 整句翻译时：仅把被翻译文本与语言代码发送给所选引擎（Google：translate.googleapis.com；Bing：www.bing.com）。
 - 英文音标：使用**内置于扩展的离线词典**（`src/data/ipa-en.tsv`，由 CMUdict 转换），纯本地查表，不联网、不发送任何数据。
+- 可选离线词典：仅在你点击「下载」时才请求 `cdn.jsdelivr.net`（或你自填的镜像）取词典分片；下载完成后查词不再产生任何网络请求。整个过程不发送你的任何字幕内容。
 - 设置与翻译缓存仅保存在本机 chrome.storage.local，不收集、不上传任何用户数据。

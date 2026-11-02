@@ -1,5 +1,13 @@
 'use strict';
 
+/* 离线词典模块（纯函数 + 扩展源 IndexedDB + 分片下载），由 build 脚本产出的
+ * src/data/dict-catalog.json 提供分片清单与 sha256。classic worker 用 importScripts 载入。 */
+try {
+  importScripts('dict.js');
+} catch (e) {
+  /* 载入失败只影响离线词典功能，翻译主流程不受影响 */
+}
+
 /* background service worker
  *
  * 职责：
@@ -300,8 +308,116 @@ async function loadIpaDict() {
   return ipaDictLoading;
 }
 
+/* ---------------------------------------------------------------- 安装进度端口
+ * 下载 32 个分片要几十秒，sendResponse 只能回一次，所以进度走长连接端口：
+ * 弹窗 connect({ name: 'kt-dict-progress' }) → postMessage({ dictId, mirror })，
+ * 后台逐片 postMessage({ type:'progress' | 'done' | 'error', ... })。 */
+chrome.runtime.onConnect.addListener((port) => {
+  if (!port || port.name !== 'kt-dict-progress') return;
+  let started = false;
+
+  port.onDisconnect.addListener(() => { started = false; });
+
+  port.onMessage.addListener((msg) => {
+    const dict = globalThis.__ktDict;
+    if (started) return;                       // 一次连接只跑一次安装
+    if (!dict) {
+      port.postMessage({ type: 'error', error: 'dict module unavailable' });
+      return;
+    }
+    const dictId = String((msg && msg.dictId) || '');
+    if (!dictId) {
+      port.postMessage({ type: 'error', error: 'missing dictId' });
+      return;
+    }
+    started = true;
+    let lastSentAt = 0;
+
+    dict.installDict(dictId, {
+      mirror: typeof (msg && msg.mirror) === 'string' ? msg.mirror : '',
+      onProgress: (p) => {
+        const now = Date.now();
+        const isFinal = p.done >= p.total;
+        if (!isFinal && now - lastSentAt < 120) return;   // 节流，避免端口消息刷屏
+        lastSentAt = now;
+        try { port.postMessage({ type: 'progress', progress: p }); } catch (e) { /* 页面已关 */ }
+      },
+    })
+      .then((result) => {
+        try { port.postMessage({ type: 'done', result }); } catch (e) { /* 页面已关 */ }
+      })
+      .catch((e) => {
+        try { port.postMessage({ type: 'error', error: String((e && e.message) || e) }); } catch (e2) { /* 页面已关 */ }
+      });
+  });
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false;
+
+  /* ---------------------------------------------------------------- 离线词典
+   * 动作集合（都来自 storage-bridge 的转发，页面侧不直接调用）：
+   *   kt-dict-status   → 已安装的词典元信息
+   *   kt-dict-lookup   → 查一个词（只用已安装词典）
+   *   kt-dict-install  → 下载并安装（逐片回传进度）
+   *   kt-dict-remove   → 删除某个词典的所有分片
+   *   kt-dict-catalog  → 清单（含体积、条目数、许可）
+   * 下载会跑很久，必须 return true 保持消息通道打开。 */
+  if (message.action === 'kt-dict') {
+    const dict = globalThis.__ktDict;
+    if (!dict) {
+      sendResponse({ ok: false, error: 'dict module unavailable' });
+      return false;
+    }
+    const op = String(message.op || '');
+    const dictId = String(message.dictId || '');
+
+    if (op === 'status') {
+      dict.dictStatus()
+        .then((installed) => sendResponse({ ok: true, installed }))
+        .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+      return true;
+    }
+
+    if (op === 'catalog') {
+      dict.loadCatalog()
+        .then((catalog) => sendResponse({
+          ok: true,
+          cdn: catalog.cdn,
+          version: catalog.version,
+          buckets: catalog.buckets,
+          dicts: catalog.dicts,
+        }))
+        .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+      return true;
+    }
+
+    if (op === 'lookup') {
+      dict.lookup(String(message.word || ''))
+        .then((hit) => sendResponse(hit))
+        .catch(() => sendResponse({ ok: false }));
+      return true;
+    }
+
+    if (op === 'install') {
+      /* 一次性触发安装（不关心进度时的入口）；进度请走 kt-dict-progress 端口 */
+      dict.installDict(dictId, { mirror: typeof message.mirror === 'string' ? message.mirror : '' })
+        .then((result) => sendResponse(Object.assign({ ok: true }, result)))
+        .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+      return true;
+    }
+
+    if (op === 'remove') {
+      dict.removeDict(dictId)
+        .then(() => sendResponse({ ok: true }))
+        .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+      return true;
+    }
+
+    sendResponse({ ok: false, error: 'unknown op: ' + op });
+    return false;
+  }
+
 
   /* 离线音标查询：纯本地查表，不发任何网络请求 */
   if (message.action === 'kt-ipa-lookup') {
