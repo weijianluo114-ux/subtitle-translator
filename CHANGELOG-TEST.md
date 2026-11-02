@@ -14,6 +14,37 @@
 
 ---
 
+## 0.4.2 — 2026-11-02
+
+**开发中，未上架。** 分支 `test`。修复用户实测「重开弹窗后所有设置/外观全部重置」的严重问题。
+
+### 修复
+
+- **设置与外观不再被重置**（用户实测：每次重新打开弹窗，改过的字幕大小/字体/颜色/透明度/位置/宽度/气泡样式全部变回默认）。
+  - **根因**：`src/popup.js` 的 `normalizeSettings()` 里有个内部工具 `pick(key, allowed, coerce)`，收尾那行写的是 `if (allowed.includes(v))`，默认 `allowed` 一定是个数组。但 `posX` / `posY` / `textOpacity` / `widthPercent` / `dictMirror` 这 **5 个键只靠 `coerce` 校验，调用时第二参数传的是 `null`**。一旦 `coerce` 判定当前值非法（首次安装时这些键还没有值、或用户输入越界），代码就走到 `undefined.includes(null)` 抛 `TypeError: Cannot read properties of null (reading 'includes')`。
+  - **致命的一步**：这个异常发生在 `init()` 的 `try` 块里，被 `catch` 吞掉后执行 `settings = deepClone(DEFAULT_SETTINGS)` —— **整个设置对象被整体替换成默认值**，于是"外观不记忆"看上去像存储问题，实际是读取时把内存里的设置清零了。
+  - **修复一**：`pick()` 改成 `if (Array.isArray(allowed) && allowed.includes(v))`，未传 `allowed` 时正确跳过白名单校验。
+  - **修复二**：`init()` 的 `catch` 不再重置，改为 `normalizeSettings(settings)` 保留当前值，并 `console.warn` 提示；只有完全拿不到可用对象时才回落默认。
+  - 顺带核对 `src/inject.js` 里的同名 `pick()`：它写的是 `if (allowed && allowed.includes(...))`，**本来就有判空**，网页侧不受影响，无需改动。
+
+### 新增
+
+- 打赏面板（`☕`）底部新增 **GitHub Star 邀请**：一句「如果它帮到了你，喜欢的话也可以点个 Star ⭐」+ 可点击的仓库链接（新标签打开）。中英文案随界面语言切换。
+
+### 变更
+
+- `src/manifest.json`：版本 `0.4.1 → 0.4.2`。
+- `src/popup.js` 末尾新增 `window.__ktPopupApi = { normalizeSettings, DEFAULT_SETTINGS, deepClone }`，仅用于自动化测试，不影响弹窗运行。
+
+### 测试
+
+- 新增 `tests/kt-settings-persist-test.mjs`（**22 条断言 ALL PASS**）：
+  - 5 个"allowed 传 null"的键喂非法值时**不再抛 TypeError**（逐个验证 `textOpacity`/`posX`/`posY`/`widthPercent`/`dictMirror`，外加"全部为 null"的组合）；
+  - **34 个设置键**（含 `tooltip` 子对象的 8 个字段）改成非默认值后往返归一化，**一个都不丢**；
+  - `normalizeSettings` **幂等**（重复归一化结果稳定，避免"存一遍改一遍"的漂移）；
+  - **真实链路验证**：改 10 个外观键 + `tooltip.fontSize` → `save()` → 用真实 JSON 往返的假 `chrome.storage.local` 重开弹窗 → 全部保留，且重开过程不会把 storage 改回默认；
+  - `storage.get` 抛错时**保留当前设置**而不是重置为默认。
+
 ## 0.4.1 — 2026-11-02
 
 **开发中，未上架。** 分支 `test`。修复 0.4.0 用户实测「三个词典都下载失败」的问题。

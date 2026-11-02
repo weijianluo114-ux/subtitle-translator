@@ -278,13 +278,16 @@ function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
 function normalizeSettings(raw) {
   const s = deepClone(DEFAULT_SETTINGS);
   const src = raw && typeof raw === 'object' ? raw : {};
+  /* allowed 是可选的：很多键只靠 coerce 校验（如 posX/textOpacity），传 null 或不传。
+   * 早期版本直接 allowed.includes(v)，coerce 返回 null 时会抛 TypeError，
+   * 又被 init() 的 catch 吞掉并整体重置为默认值 —— 表现为"所有设置都不保存"。 */
   const pick = (key, allowed, coerce) => {
     const v = src[key];
     if (coerce) {
       const c = coerce(v);
       if (c != null) { s[key] = c; return; }
     }
-    if (allowed.includes(v)) s[key] = v;
+    if (Array.isArray(allowed) && allowed.includes(v)) s[key] = v;
   };
   pick('enabled', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('manualCaptions', ['rechunk', 'keep']);
@@ -844,11 +847,18 @@ async function init() {
   } catch (e) { /* 语言表加载失败则只有 auto/英文 */ }
   fillLanguageSelects();
 
+  /* 读设置失败时不要把全部设置清成默认值（那等于用户辛苦调的外观一次全丢）。
+   * 优先保留已加载的 settings，只在完全没有可用值时回落到默认。 */
   try {
     const items = await chrome.storage.local.get({ [SETTINGS_KEY]: null });
     settings = normalizeSettings(items[SETTINGS_KEY]);
   } catch (e) {
-    settings = deepClone(DEFAULT_SETTINGS);
+    const fallback = normalizeSettings(settings);
+    const hasUsable = fallback && typeof fallback === 'object';
+    settings = hasUsable ? fallback : deepClone(DEFAULT_SETTINGS);
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[kt] 读取设置失败，已保留当前值而不是重置:', (e && e.message) || e);
+    }
   }
 
   uiLang = settings.uiLang;
@@ -857,5 +867,8 @@ async function init() {
   bind();
   refreshDictState();
 }
+
+/* 仅供自动化测试：暴露纯函数与状态（不影响弹窗运行） */
+window.__ktPopupApi = { normalizeSettings, DEFAULT_SETTINGS, deepClone };
 
 init();
