@@ -256,6 +256,10 @@
     translationUnits: [],
     currentChunkWordStart: -1,
     currentChunkWordEnd: -1,
+    /* 免费引擎（Google/Bing）冷却状态：失败后隔 N 句再试，避免国内网络下每句白试。
+     * cooldown = 还要等几句；failLevel = 连续失败次数（决定下一档等待 10/15/20 句） */
+    freeCooldown: { google: 0, bing: 0 },
+    freeFailLevel: { google: 0, bing: 0 },
     overlay: null,
     overlayText: null,
     measurer: null,
@@ -508,7 +512,11 @@
         }, { once: true });
       }
       document.documentElement.dispatchEvent(new CustomEvent('kt-translate-request', {
-        detail: { id, translatorKey, text, sl, tl },
+        detail: {
+          id, translatorKey, text, sl, tl,
+          freeCooldown: STATE.freeCooldown,
+          freeFailLevel: STATE.freeFailLevel,
+        },
       }));
     });
   }
@@ -763,6 +771,42 @@
     return h.toString(36);
   }
 
+  /* ---- 免费引擎冷却：本地推进计数（每句 -1），并吸收后台回传的新状态 ---- */
+
+  /* 与后台保持一致：连续失败 1/2/3 次 → 等待 10/15/20 句 */
+  const FREE_COOLDOWN_STEPS = [10, 15, 20];
+  function freeCooldownForLevel(level) {
+    if (level <= 0) return 0;
+    const idx = Math.min(level - 1, FREE_COOLDOWN_STEPS.length - 1);
+    return FREE_COOLDOWN_STEPS[idx];
+  }
+
+  function freeCooldownActive(engine) {
+    return (STATE.freeCooldown[engine] || 0) > 0;
+  }
+
+  /* 注意：这里不要递减冷却计数。
+   * 后台收到请求后会先减 1 再过滤引擎，并把减完的值回传；页面侧若也减一次，
+   * 就变成"一句话消耗两格"，实际等待句数只有设定的一半。 */
+  function tickFreeCooldown() {
+    /* 保留函数以兼容既有调用点，真实递减只发生在后台 */
+  }
+
+  function applyFreeCooldown(nextCd, nextLv) {
+    if (nextCd) {
+      for (const k of ['google', 'bing']) {
+        const v = Number(nextCd[k]);
+        if (Number.isFinite(v)) STATE.freeCooldown[k] = Math.max(0, Math.floor(v));
+      }
+    }
+    if (nextLv) {
+      for (const k of ['google', 'bing']) {
+        const v = Number(nextLv[k]);
+        if (Number.isFinite(v)) STATE.freeFailLevel[k] = Math.max(0, Math.min(3, Math.floor(v)));
+      }
+    }
+  }
+
   async function translateText(text, signal) {
     const raw = String(text || '').trim();
     if (!raw) return null;
@@ -771,10 +815,15 @@
     const preferred = STATE.settings.translator;
     const translatorKey = ['bing', 'mymemory', 'deepl', 'custom'].includes(preferred) ? preferred : 'google';
 
-    // 首选：页面侧直连 Google（走页面同款网络/代理）
-    if (translatorKey === 'google') {
+    tickFreeCooldown();
+
+    /* 首选：页面侧直连 Google（走页面同款网络/代理）
+     * 仅当 Google 没在冷却期时才试——否则这里会每句白试 6 次，后台的冷却形同虚设。 */
+    if (translatorKey === 'google' && !freeCooldownActive('google')) {
       const direct = await requestGoogleDirect(limited, STATE.settings.sourceLanguage, STATE.settings.targetLanguage);
       if (direct && direct.ok && direct.translatedText) {
+        STATE.freeCooldown.google = 0;
+        STATE.freeFailLevel.google = 0;
         debugLog('translate_ok', { path: 'direct', engine: 'google', len: limited.length, fp: textFingerprint(limited), truncated: raw.length > limited.length, text: limited.slice(0, 120) });
         return {
           translatedText: direct.translatedText,
@@ -784,9 +833,16 @@
           transcription: direct.transcription || '',
         };
       }
+      /* 页面侧直连失败也要计入冷却，否则它和后台会双份"每句都试" */
+      STATE.freeFailLevel.google = Math.min(3, (STATE.freeFailLevel.google || 0) + 1);
+      STATE.freeCooldown.google = freeCooldownForLevel(STATE.freeFailLevel.google);
+      debugLog('free_engine_cooldown', {
+        engine: 'google', path: 'direct', level: STATE.freeFailLevel.google,
+        wait: STATE.freeCooldown.google,
+      });
     }
 
-    // 兜底：后台代理链（上次成功引擎 > 首选 > Google → Bing → MyMemory）
+    // 兜底：后台代理链（首选 > 其余免费引擎 > 已配置 DeepL/自定义 > MyMemory）
     const r = await requestTranslationViaBridge(
       translatorKey,
       limited,
@@ -794,6 +850,10 @@
       STATE.settings.targetLanguage,
       signal
     );
+
+    /* 后台会把过滤后的计数与新的失败等级回传，这里以它为准（避免双份计数导致提前重试） */
+    if (r && (r.freeCooldown || r.freeFailLevel)) applyFreeCooldown(r.freeCooldown, r.freeFailLevel);
+
     if (!r || !r.ok) throw new Error((r && r.error) || 'translate-failed');
     debugLog('translate_ok', { path: 'bridge', engine: r.engine || translatorKey, len: limited.length, fp: textFingerprint(limited), truncated: raw.length > limited.length, text: limited.slice(0, 120) });
     return {
@@ -3161,6 +3221,10 @@
     dictCacheGet,
     dictCachePut,
     clearDictCache,
+    freeCooldownForLevel,
+    tickFreeCooldown,
+    applyFreeCooldown,
+    freeCooldownActive,
     purgeOrphanNodes,
     mountOverlayNode,
     tooltipHost,

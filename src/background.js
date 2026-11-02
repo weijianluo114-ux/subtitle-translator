@@ -417,7 +417,54 @@ const mymemory = new MyMemoryTranslator();
 const deepl = new DeepLTranslator();
 const customEndpoint = new CustomEndpointTranslator();
 const activeRequests = new Map();
-let lastGoodEngine = null; // 记住上次成功的引擎，下次优先走它，避免每次都白试
+let lastGoodEngine = null; // 仅用于诊断日志；实际避让已由下面的免费引擎冷却机制接管
+
+/* ============================ 免费引擎冷却（避让重试） ============================
+ * 背景：Google / Bing 免费且质量好，理应首选；但国内网络下 Google 常常是被限流状态，
+ * 每句话都去试一遍会白白增加延迟。于是：
+ *   失败一次 → 先让位给别的引擎，隔 N 句再回来试；连续失败则把间隔逐步拉长。
+ *
+ * 阶梯：10 句 → 15 句 → 20 句（封顶，之后固定每 20 句最多试一次）。
+ * 一旦成功，立即清零：间隔回到 10 句重新开始。
+ *
+ * 计数器由页面侧持有（content script 与视频会话同生命周期），随每条翻译请求带上来，
+ * 后台只负责「按计数过滤引擎 + 计算新的计数并回传」。这样 service worker 被回收
+ * 也不会丢掉冷却状态。
+ * ================================================================================= */
+const FREE_ENGINES = ['google', 'bing'];
+const FREE_ENGINE_COOLDOWN_STEPS = [10, 15, 20];   // 第 1/2/3+ 次连续失败后的等待句数
+
+function normalizeCooldownMap(raw) {
+  const out = {};
+  for (const k of FREE_ENGINES) {
+    const v = raw && raw[k];
+    const n = Number(v);
+    out[k] = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  }
+  return out;
+}
+
+function normalizeLevelMap(raw) {
+  const out = {};
+  for (const k of FREE_ENGINES) {
+    const v = raw && raw[k];
+    const n = Number(v);
+    out[k] = Number.isFinite(n) && n > 0 ? Math.min(3, Math.floor(n)) : 0;
+  }
+  return out;
+}
+
+/* 连续失败 n 次后应等待的句数（n=0 表示不等待） */
+/* 轻量日志：只在 service worker 控制台可见，不写入诊断报告 */
+function swLog(...args) {
+  try { console.log('[kt-engine]', ...args); } catch (e) { /* ignore */ }
+}
+
+function cooldownForLevel(level) {
+  if (level <= 0) return 0;
+  const idx = Math.min(level - 1, FREE_ENGINE_COOLDOWN_STEPS.length - 1);
+  return FREE_ENGINE_COOLDOWN_STEPS[idx];
+}
 
 /* DeepL key / 自定义端点：从 storage 读一次并跟随变化更新，
  * 避免每次翻译都读取 storage（service worker 里读 storage 是异步的，会拖慢首包）。 */
@@ -648,23 +695,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       custom: !!String(storedCustomEndpoint || '').trim(),
     };
 
-    /* 引擎顺序：上次成功的引擎 > 用户首选 > Google > Bing > 已配置的 DeepL > 已配置的自定义 > MyMemory
-     * MyMemory 放最后，因为它匿名额度最小、且额度耗尽后会熔断。 */
-    const order = [lastGoodEngine, primaryKey, 'google', 'bing', 'deepl', 'custom', 'mymemory']
+    /* 页面侧带上的冷却状态：cooldown = 还要等几句才允许再试该引擎，level = 连续失败次数 */
+    const cdIn = normalizeCooldownMap(message.freeCooldown);
+    const lvIn = normalizeLevelMap(message.freeFailLevel);
+
+    /* 参与本句话冷却计数的免费引擎（用户首选若不是免费引擎，两个免费引擎都算候选） */
+    const freeCandidates = FREE_ENGINES.filter((k) => {
+      if (cdIn[k] > 0) return false;              // 还在冷却期，本句不参与
+      return true;
+    });
+
+    /* 冷却计数每句话减 1；用"减完之后"的值判断：
+     * cooldown=10 表示跳过接下来的 10 句，第 11 句才回来试。 */
+    const cdNext = {};
+    for (const k of FREE_ENGINES) cdNext[k] = Math.max(0, cdIn[k] - 1);
+    const cooledFree = (k) => FREE_ENGINES.includes(k) && cdNext[k] > 0;
+
+    /* 引擎顺序：用户首选 > 其余免费引擎 > 已配置的 DeepL > 已配置的自定义 > MyMemory
+     *  - 免费引擎在冷却期内会被整体跳过（cooledFree），不再每句白试
+     *  - MyMemory 放最后（匿名额度最小，且额度耗尽会熔断）
+     *  - 不再让 lastGoodEngine 插队，避免"我选 Google 却一直在用 MyMemory" */
+    const order = [primaryKey, 'google', 'bing', 'deepl', 'custom', 'mymemory']
       .filter((k) => k && all[k])
+      .filter((k) => !cooledFree(k))
       .filter((k) => k !== 'deepl' || configured.deepl)
       .filter((k) => k !== 'custom' || configured.custom)
       .filter((k, i, arr) => arr.indexOf(k) === i);
 
+    const lvNext = { ...lvIn };
+    const triedFree = [];
+
     (async () => {
       const errors = [];
       for (const key of order) {
+        if (FREE_ENGINES.includes(key)) triedFree.push(key);
         try {
           const extra = key === 'deepl' ? storedDeepLKey
             : key === 'custom' ? storedCustomEndpoint : undefined;
           const r = await all[key].translate(message.text, message.sourceLanguageCode,
             message.targetLanguageCode, controller.signal, extra);
           lastGoodEngine = key;
+          /* 成功：本句实际试过的免费引擎全部清零（间隔回到 10 句重新起步） */
+          /* 只清零真正成功的那一个引擎。
+           * 本句里失败过的免费引擎（例如 Google 失败后由 Bing 接手）必须保留
+           * 它的冷却与等级，否则一成功就把失败记录抹掉，等于永远不冷却。 */
+          if (FREE_ENGINES.includes(key)) { cdNext[key] = 0; lvNext[key] = 0; }
+          swLog('ok', key, '| cooldown', JSON.stringify(cdNext), '| level', JSON.stringify(lvNext));
           sendResponse({
             translatedText: r.translatedText,
             detectedLanguageCode: r.detectedLanguageCode,
@@ -672,14 +748,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             transliteration: r.transliteration,
             transcription: r.transcription,
             engine: key,
+            freeCooldown: cdNext,
+            freeFailLevel: lvNext,
           });
           return;
         } catch (err) {
           errors.push(key + ': ' + String((err && err.message) || err));
+          /* 免费引擎失败：升一级并进入阶梯冷却（10 → 15 → 20 句后再试） */
+          if (FREE_ENGINES.includes(key)) {
+            lvNext[key] = Math.min(3, (lvNext[key] || 0) + 1);
+            cdNext[key] = cooldownForLevel(lvNext[key]);
+          }
           if (controller.signal.aborted) break;
         }
       }
-      sendResponse({ error: errors.join(' | ') });
+      swLog('failed', '| tried', JSON.stringify(triedFree), '| cooldown', JSON.stringify(cdNext), '| level', JSON.stringify(lvNext));
+      sendResponse({
+        error: errors.join(' | '),
+        freeCooldown: cdNext,
+        freeFailLevel: lvNext,
+      });
     })().finally(() => activeRequests.delete(message.requestId));
 
     return true; // 异步响应

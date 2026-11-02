@@ -68,6 +68,9 @@
         text: detail.text,
         sourceLanguageCode: detail.sl || 'auto',
         targetLanguageCode: detail.tl || 'en',
+        /* 免费引擎冷却状态由页面侧持有，随请求带上来 */
+        freeCooldown: detail.freeCooldown || null,
+        freeFailLevel: detail.freeFailLevel || null,
       },
       (resp) => {
         const err = chrome.runtime.lastError;
@@ -80,6 +83,8 @@
           transliteration: resp && resp.transliteration,
           transcription: resp && resp.transcription,
           engine: resp && resp.engine,
+          freeCooldown: resp && resp.freeCooldown,
+          freeFailLevel: resp && resp.freeFailLevel,
           error: (err && err.message) || (resp && resp.error) || null,
         });
       }
