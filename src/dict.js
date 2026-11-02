@@ -18,7 +18,9 @@
 
   const BUCKETS = 32;
   const DB_NAME = 'kt-dict';
-  const DB_VERSION = 1;
+  /* v2：v1 的 onupgradeneeded 只建了 shards，漏建 meta，导致装了 v1 的机器一写
+   * 元信息就报 "One of the specified object stores was not found"。升版本强制升级补齐。 */
+  const DB_VERSION = 2;
   const STORE_SHARDS = 'shards';
   const STORE_META = 'meta';
 
@@ -80,15 +82,47 @@
   /* ------------------------------------------------------------- IndexedDB */
 
   let dbPromise = null;
+
+  /* 缺 store 自愈时按指定版本重开；正常路径用 DB_VERSION */
+  function openDbWithVersion(version) {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, version);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE_SHARDS)) db.createObjectStore(STORE_SHARDS);
+        if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
+      req.onblocked = () => reject(new Error('indexedDB upgrade blocked'));
+    });
+  }
+
   function openDb() {
     if (dbPromise) return dbPromise;
+    if (typeof indexedDB === 'undefined' || !indexedDB) {
+      return Promise.reject(new Error('no-indexeddb'));
+    }
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE_SHARDS)) db.createObjectStore(STORE_SHARDS);
+        if (!db.objectStoreNames.contains(STORE_META)) db.createObjectStore(STORE_META);
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        /* 自愈：万一还存在缺 store 的历史库（例如升级被中断），关掉用更高版本重开一次 */
+        const missing = !db.objectStoreNames.contains(STORE_SHARDS) || !db.objectStoreNames.contains(STORE_META);
+        if (missing) {
+          const nextVersion = db.version + 1;
+          db.close();
+          dbPromise = null;
+          openDbWithVersion(nextVersion).then(resolve, reject);
+          return;
+        }
+        resolve(db);
+      };
       req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
     });
     return dbPromise;
@@ -240,8 +274,18 @@
 
   /* 安装：逐片下载 → 校验 sha256 → 解压 → 写 IDB。
    * 已存在且校验通过的分片跳过，因此中断后再点下载可续传。 */
+  /* 下载前先确认两个 store 都在：否则等 32 片下载完才报错，用户白等几十秒 */
+  async function ensureStores() {
+    const db = await openDb();
+    if (!db.objectStoreNames.contains(STORE_SHARDS) || !db.objectStoreNames.contains(STORE_META)) {
+      throw new Error('local-db-incomplete');
+    }
+    return true;
+  }
+
   async function installDict(dictId, options) {
     const opts = options || {};
+    await ensureStores();
     const catalog = opts.catalog || await loadCatalog();
     const info = catalog && catalog.dicts && catalog.dicts[dictId];
     if (!info) throw new Error('unknown dict: ' + dictId);
@@ -322,7 +366,7 @@
     BUCKETS, DEFAULT_CDN, FALLBACK_CDN, CJK_RE,
     keyHash, bucketOf, normalizeKey, candidateKeys,
     gunzip, sha256Hex, parseTsv,
-    loadShardMap, lookupInDict, lookup, dictOrderFor,
+    loadShardMap, lookupInDict, lookup, dictOrderFor, ensureStores,
     dictStatus, removeDict,
     loadCatalog, installDict,
   };

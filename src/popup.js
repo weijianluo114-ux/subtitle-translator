@@ -146,6 +146,10 @@ const I18N = {
     dictSaved: '已保存到本地',
     dictRemoved: '已删除本地词典',
     dictNeedOnline: '下载需要联网（YouTube 能打开才能下载）',
+    dictErrDb: '本地数据库结构异常，请在 chrome://extensions 点刷新（↻）后重新打开弹窗再试',
+    dictErrChecksum: '字典文件校验失败，请重试或更换下载镜像',
+    dictErrNetwork: '网络不通，请确认代理已开启后重试',
+    dictErrUnknown: '未知的词典，请刷新扩展后重试',
   },
   en: {
     appTitle: 'Subtitle Line Translator',
@@ -242,6 +246,10 @@ const I18N = {
     dictSaved: 'Saved locally',
     dictRemoved: 'Local dictionary removed',
     dictNeedOnline: 'Downloading needs a network connection',
+    dictErrDb: 'Local database is in a bad state — click reload (↻) on chrome://extensions, reopen the popup and retry',
+    dictErrChecksum: 'Dictionary file failed its checksum — retry or use another mirror',
+    dictErrNetwork: 'Network unreachable — check your proxy and retry',
+    dictErrUnknown: 'Unknown dictionary — reload the extension and retry',
   },
 };
 
@@ -563,10 +571,21 @@ function installDict(dictId, force) {
   const mirror = (settings.dictMirror || '').trim();
   let port = null;
 
+  /* 把后台的技术错误翻成用户能懂的话（原样显示 IDB 报错只会让人一头雾水） */
+  const humanizeDictError = (error) => {
+    const raw = String(error || '');
+    if (/local-db-incomplete|object stores was not found/i.test(raw)) return t('dictErrDb');
+    if (/local-db-incomplete/i.test(raw)) return t('dictErrDb');
+    if (/sha256|checksum/i.test(raw)) return t('dictErrChecksum');
+    if (/http-4|http-5|Failed to fetch|fetch failed|NetworkError|net::/i.test(raw)) return t('dictErrNetwork');
+    if (/unknown dict/i.test(raw)) return t('dictErrUnknown');
+    return raw;
+  };
+
   const finishFailed = (error) => {
     dictBusy = null;
     dictProgress = null;
-    dictMessage = { dictId, text: t('dictFailed') + '：' + (error || ''), isError: true };
+    dictMessage = { dictId, text: t('dictFailed') + '：' + humanizeDictError(error), isError: true };
     renderDictList();
   };
 

@@ -14,6 +14,33 @@
 
 ---
 
+## 0.4.1 — 2026-11-02
+
+**开发中，未上架。** 分支 `test`。修复 0.4.0 用户实测「三个词典都下载失败」的问题。
+
+### 修复
+
+- **下载失败 `One of the specified object stores was not found`**（用户实测三条词典全部失败）。
+  - **根因**：`src/dict.js` 建库时 `onupgradeneeded` 只创建了 `shards` store，漏建 `meta` store。用户机器上已经存在版本 1 的 `kt-dict` 库（只有 shards），而打开时用的还是 `DB_VERSION = 1` —— 版本号没变就不会触发 `onupgradeneeded`，所以 `meta` 永远补不上；等 32 个分片全部下载写完之后，`idbPut(STORE_META, ...)` 才抛错，表现为「下载到 100% 然后失败」。
+  - **修复一：版本号 1 → 2**，强制触发一次升级，在 `onupgradeneeded` 里同时创建 `shards` 与 `meta`。
+  - **修复二：打开后自愈**，`openDb()` 的 `onsuccess` 里检查两个 store 是否都在，缺任一则 `db.close()` 并按 `db.version + 1` 用新增的 `openDbWithVersion()` 重开一次（含 `onblocked` 处理），即使升级曾被中断也能恢复。
+  - **修复三：fail-fast**，新增 `ensureStores()` 并在 `installDict` 最开头调用，store 不全时立刻返回 `local-db-incomplete`，不再让用户白等 30 秒下载完才发现失败。
+  - **修复四：错误说人话**，弹窗新增 `humanizeDictError()`，把 IDB/校验/网络等技术报错翻成中英文可操作提示（`dictErrDb`/`dictErrChecksum`/`dictErrNetwork`/`dictErrUnknown`）。
+
+### 变更
+
+- `src/manifest.json`：版本 `0.4.0 → 0.4.1`。
+- 升级**不会丢掉已下载的分片**：自愈路径只补建缺失的 store，不清空 `shards`；因此 0.4.0 下已经下载成功的部分可直接续传。
+
+### 测试
+
+- 新增 `tests/kt-dict-idb-test.mjs`（**9 条断言 ALL PASS**），用可配置版本的假 IndexedDB 复现该 bug 并验证修复：
+  - 全新库（版本 0）打开后 `shards` 与 `meta` 都在；
+  - 构造历史 v1 库（只有 `shards`）→ **先复现原始报错**，再用 `dict.js` 打开 → 自动补齐 `meta`；
+  - 已写入 `shards` 的分片数据在升级后**仍然存在**（不被清空）；
+  - 库版本被升到 2，升级后 `dictStatus()` 可正常读取；
+  - store 不可用时 `installDict` 立即失败，报错信息明确。
+
 ## 0.4.0 — 2026-11-02
 
 **开发中，未上架。** 分支 `test`。可选离线词典（下载即用、离线优先）。
