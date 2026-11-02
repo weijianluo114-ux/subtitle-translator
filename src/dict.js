@@ -247,6 +247,8 @@
     if (!info) throw new Error('unknown dict: ' + dictId);
     const buckets = Object.keys(info.shards || {}).sort();
     const total = buckets.length;
+    /* force=true 时先清空已有分片，真正重新下载（弹窗「重新下载」用） */
+    if (opts.force) await removeDict(dictId);
     let done = 0;
     let bytes = 0;
     const report = () => {

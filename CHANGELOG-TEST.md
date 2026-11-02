@@ -33,7 +33,8 @@
 - **查表归一化**：小写 → 去首尾标点 → 所有格/缩写回退（`word's → word`）→ 连字符回退（`well-known → wellknown → known`）。中文词走 CC-CEDICT，英文词走 ECDICT → WordNet。
 - **弹窗 UI（设置面板 →「离线词典」组）**：总开关、三项词典卡片（名称/条目数/体积/许可/状态/下载-删除按钮）、逐片进度条与百分比、可选「下载镜像」输入框、合规说明文案。
 - **进度走长连接端口**：`chrome.runtime.connect({name:'kt-dict-progress'})` 逐片回传 `{type:'progress'|'done'|'error'}`；单次 `sendResponse` 只能回一条，下载几十秒会被截断。
-- **断点续传**：已下载且 sha256 匹配的分片直接跳过，中断后再点「下载」不用从头再来。
+- **断点续传**：已下载且 sha256 匹配的分片直接跳过，中断后再点「下载」不用从头再来；「重新下载」按钮走 `force` 分支，先清空再全量重取（用于词典版本更新或本地损坏）。
+- **页面侧词条缓存**：同一集内反复悬停同一词不再跨进程往返（LRU 600，未命中记 `null` 也缓存）；切换词典开关/优先级时自动清空，避免"关掉了还显示离线释义"。
 
 ### 修复
 
@@ -51,7 +52,8 @@
 
 - `src/THIRD_PARTY_NOTICES.md`：新增三词典署名、许可与来源，补充「只下载不上传」的数据流向；许可全文随包分发（`src/data/ECDICT-LICENSE.txt`、`WORDNET-LICENSE.txt`、`CC-BY-SA-4.0.txt`）。
 - `PRIVACY.md`：新增 §11「可选离线词典（下载与本地存储）」中英双语，§1/§3 补充下载域名（jsDelivr / GitHub Raw / 自填镜像）与「查词完全本地、不上传」；生效日期改 2026-11-02。
-- `tests/kt-core-test.mjs`：新增第 18 组「离线词典」**54 条断言**（hash 与 Python 的 9 组样本对照、归一化/回退、`dictSource` 词典顺序、清单条目数与分片数一致、分片文件存在性、`00` 分片 sha256 校验、端到端「bucketOf → 解压 → 查表」含中文校验）；总数 **131 条 ALL PASS**。
+- `tests/kt-core-test.mjs`：新增第 18 组「离线词典」**67 条断言**（hash 与 Python 的 9 组样本对照、归一化/回退、`dictSource` 词典顺序、清单条目数与分片数一致、分片文件存在性、`00` 分片 sha256 校验、端到端「bucketOf → 解压 → 查表」含中文校验、页面侧词条缓存 LRU 与设置联动）；总数 **144 条 ALL PASS**。
+- 词典包已发布到仓库 orphan 分支 `dict-v1`（98 个文件，19 MB）：`cdn.jsdelivr.net/gh/weijianluo114-ux/subtitle-translator@dict-v1/dicts`，实测分片 `ecdict/1c.tsv.gz` sha256 与清单一致，`raw.githubusercontent.com` 回退路径同样可访问。
 
 ## 0.3.3 — 2026-09-18
 

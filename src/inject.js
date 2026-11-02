@@ -417,6 +417,11 @@
       pauseController.resume();
     }
 
+    /* 词典开关/优先级/镜像变动 → 清掉页面侧词条缓存（否则关掉词典仍显示旧离线释义） */
+    if (prev.offlineDict !== STATE.settings.offlineDict || prev.dictSource !== STATE.settings.dictSource) {
+      clearDictCache();
+    }
+
     const rebuildKeys = ['targetLines', 'textSize', 'font', 'allCaps', 'textBold', 'captionWidth', 'widthPercent'];
     const needsRebuild = rebuildKeys.some((k) => prev[k] !== STATE.settings[k]);
 
@@ -627,6 +632,30 @@
     return lines.join('\n');
   }
 
+  /* 页面侧词条缓存：同一集里反复悬停同一个词不需要每次都跨进程往返。
+   * 未命中记 null（同样缓存），避免重复查询；词典被删除/更换时由设置变更清空。 */
+  const dictCache = new Map();
+  const DICT_CACHE_MAX = 600;
+
+  function dictCacheGet(word) {
+    const key = String(word || '').trim().toLowerCase();
+    if (!key || !dictCache.has(key)) return undefined;
+    const hit = dictCache.get(key);
+    dictCache.delete(key);
+    dictCache.set(key, hit);
+    return hit;
+  }
+
+  function dictCachePut(word, value) {
+    const key = String(word || '').trim().toLowerCase();
+    if (!key) return;
+    if (dictCache.has(key)) dictCache.delete(key);
+    dictCache.set(key, value);
+    while (dictCache.size > DICT_CACHE_MAX) dictCache.delete(dictCache.keys().next().value);
+  }
+
+  function clearDictCache() { dictCache.clear(); }
+
   /* 页面 → 后台：查离线词典（未下载任何词典时后台立即回 { ok:false }） */
   function requestDictLookup(word) {
     return new Promise((resolve) => {
@@ -657,11 +686,15 @@
   async function lookupOfflineOrOnline(word) {
     if (STATE.settings.offlineDict === false) return null;
     if (STATE.settings.dictSource === 'online') return null;
+    const cached = dictCacheGet(word);
+    if (cached !== undefined) return cached;      // 命中 null 表示此前已确认查不到
     const hit = await requestDictLookup(word);
-    if (!hit) return null;
+    if (!hit) { dictCachePut(word, null); return null; }
     const text = formatOfflineGloss(hit.body);
-    if (!text) return null;
-    return { dictId: hit.dictId, body: hit.body, label: dictSourceLabel(hit.dictId), text };
+    if (!text) { dictCachePut(word, null); return null; }
+    const result = { dictId: hit.dictId, body: hit.body, label: dictSourceLabel(hit.dictId), text };
+    dictCachePut(word, result);
+    return result;
   }
 
   /* 字幕块渲染时批量预取，悬停时直接命中缓存 */
@@ -3119,6 +3152,9 @@
     requestIpa,
     requestDictLookup,
     lookupOfflineOrOnline,
+    dictCacheGet,
+    dictCachePut,
+    clearDictCache,
     purgeOrphanNodes,
     mountOverlayNode,
     tooltipHost,

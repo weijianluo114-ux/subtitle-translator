@@ -335,6 +335,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
     dict.installDict(dictId, {
       mirror: typeof (msg && msg.mirror) === 'string' ? msg.mirror : '',
+      force: !!(msg && msg.force),
       onProgress: (p) => {
         const now = Date.now();
         const isFinal = p.done >= p.total;

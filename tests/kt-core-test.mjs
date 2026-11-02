@@ -402,5 +402,33 @@ try {
   assert(false, 'ECDICT 分片解压/解析失败：' + String((e && e.message) || e));
 }
 
+
+/* ---- 页面侧词条缓存：命中/未命中缓存/LRU 上限/清理 ---- */
+console.log('\n-- 离线词典（页面侧缓存与设置联动）--');
+assert(typeof api.dictCacheGet === 'function' && typeof api.dictCachePut === 'function' && typeof api.clearDictCache === 'function',
+  'inject.js 暴露 dictCacheGet / dictCachePut / clearDictCache');
+assert(api.dictCacheGet('never-seen') === undefined, '未查询过的词返回 undefined（与"已确认查不到"区分）');
+api.dictCachePut('Hello', { text: '你好' });
+assert(api.dictCacheGet('hello').text === '你好', '缓存按小写归一，大小写不敏感');
+api.dictCachePut('zzzz', null);
+assert(api.dictCacheGet('zzzz') === null, '未命中也被缓存（null），避免重复跨进程查询');
+api.clearDictCache();
+assert(api.dictCacheGet('hello') === undefined, 'clearDictCache 后缓存清空');
+
+/* 上限：超过 600 条淘汰最久未用 */
+for (let i = 0; i < 605; i++) api.dictCachePut('w' + i, { text: 'x' });
+assert(api.dictCacheGet('w0') === undefined, 'LRU 上限 600：最旧条目被淘汰');
+assert(api.dictCacheGet('w604') !== undefined, 'LRU：最新条目保留');
+api.dictCachePut('w604', { text: 'y' });
+assert(api.dictCacheGet('w604').text === 'y', '重复写入会覆盖旧值');
+
+/* 设置默认值：离线词典默认开启、释义优先级默认 auto */
+assert(api.normalizeSettings({}).offlineDict === true, '设置默认 offlineDict = true');
+assert(api.normalizeSettings({}).dictSource === 'auto', '设置默认 dictSource = auto');
+assert(api.normalizeSettings({ dictSource: 'bogus' }).dictSource === 'auto', '非法 dictSource 回退 auto');
+assert(api.normalizeSettings({ dictSource: 'online' }).dictSource === 'online', '合法 dictSource 保留');
+assert(api.normalizeSettings({ offlineDict: false }).offlineDict === false, 'offlineDict 可关闭');
+api.clearDictCache();
+
 console.log('\n==== ' + (failed === 0 ? 'ALL PASS' : failed + ' FAILED') + ' ====');
 process.exit(failed === 0 ? 0 : 1);

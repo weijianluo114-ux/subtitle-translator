@@ -549,8 +549,11 @@ async function refreshDictState() {
   renderDictList();
 }
 
-function installDict(dictId) {
+let dictForce = false;
+
+function installDict(dictId, force) {
   if (dictBusy) return;
+  dictForce = !!force;
   dictBusy = dictId;
   dictProgress = { done: 0, total: dictCatalog && dictCatalog.dicts[dictId]
     ? Object.keys(dictCatalog.dicts[dictId].shards || {}).length : 0 };
@@ -606,7 +609,7 @@ function installDict(dictId) {
         renderDictList();
       }
     });
-    port.postMessage({ dictId, mirror });
+    port.postMessage({ dictId, mirror, force: !!dictForce });
   } catch (e) {
     finishFailed(String((e && e.message) || e));
   }
@@ -656,7 +659,11 @@ function bind() {
   });
   $('dict-list').addEventListener('click', (e) => {
     const installBtn = e.target.closest('[data-dict-install]');
-    if (installBtn) { installDict(installBtn.dataset.dictInstall); return; }
+    if (installBtn) {
+      const id = installBtn.dataset.dictInstall;
+      installDict(id, !!(dictInstalled && dictInstalled[id]));
+      return;
+    }
     const removeBtn = e.target.closest('[data-dict-remove]');
     if (removeBtn) { removeDict(removeBtn.dataset.dictRemove); }
   });
