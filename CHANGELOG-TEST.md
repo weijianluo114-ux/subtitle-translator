@@ -27,6 +27,10 @@
   - **修复三：fail-fast**，新增 `ensureStores()` 并在 `installDict` 最开头调用，store 不全时立刻返回 `local-db-incomplete`，不再让用户白等 30 秒下载完才发现失败。
   - **修复四：错误说人话**，弹窗新增 `humanizeDictError()`，把 IDB/校验/网络等技术报错翻成中英文可操作提示（`dictErrDb`/`dictErrChecksum`/`dictErrNetwork`/`dictErrUnknown`）。
 
+### 新增
+
+- 打赏面板（`☕`）底部新增 **GitHub Star 邀请**：一句「如果它帮到了你，喜欢的话也可以点个 Star ⭐」+ 可点击的仓库链接（新标签打开）。中英文文案随界面语言切换。
+
 ### 变更
 
 - `src/manifest.json`：版本 `0.4.0 → 0.4.1`。

@@ -87,6 +87,34 @@ body { display: flex; flex-direction: column; min-height: 480px; max-height: 560
 }
 .kt-donate-imgs figcaption { font-size: 11px; color: #666; margin-top: 4px; }
 
+/* 打赏面板底部的 GitHub Star 邀请 */
+.kt-donate-star {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px dashed #e3e6ee;
+  text-align: center;
+}
+
+.kt-donate-star-text {
+  font-size: 11px;
+  color: #8a8f9e;
+  line-height: 1.5;
+}
+
+.kt-donate-star-link {
+  display: inline-block;
+  margin-top: 3px;
+  max-width: 100%;
+  font-size: 10.5px;
+  color: #2563eb;
+  text-decoration: none;
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.kt-donate-star-link:hover { text-decoration: underline; }
+.kt-donate-star-link:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; border-radius: 3px; }
+
 /* ---- 标签页 ---- */
 .kt-tabs {
   display: flex;
