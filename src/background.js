@@ -219,20 +219,74 @@ class GoogleTranslator {
 
 /* MyMemory 免费翻译（无需 key，国内通常可达，作为最后兜底） */
 class MyMemoryTranslator {
+  constructor() {
+    /* 免费匿名额度按 IP 计（约几千字符/天）。一旦命中额度上限，继续猛试只会让
+     * 同一天内所有请求全部失败，所以这里做个熔断：额度耗尽后进入冷却期，
+     * 期间直接失败并带上明确原因，让引擎链立刻去试别的引擎，而不是白等。 */
+    this.quotaCooldownUntil = 0;
+    this.quotaCooldownMs = 60 * 60 * 1000;   // 额度耗尽后冷却 1 小时
+    this.lastError = null;
+  }
+
+  isQuotaExhausted() {
+    return Date.now() < this.quotaCooldownUntil;
+  }
+
+  markQuotaExhausted() {
+    this.quotaCooldownUntil = Date.now() + this.quotaCooldownMs;
+  }
+
   async translate(text, sl, tl, signal) {
+    if (this.isQuotaExhausted()) {
+      const err = new Error('mymemory-quota-exhausted');
+      err.quota = true;
+      throw err;
+    }
     const src = sl && sl !== 'auto' ? String(sl).split('-')[0] : 'autodetect';
     const tgt = tl || 'zh-CN';
     const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) +
       '&langpair=' + encodeURIComponent(src + '|' + tgt);
     const resp = await fetch(url, { signal });
+
+    if (resp.status === 429) {
+      this.markQuotaExhausted();
+      const err = new Error('mymemory-quota-429');
+      err.status = 429;
+      err.quota = true;
+      throw err;
+    }
     if (!resp.ok) {
       const err = new Error('mymemory-http-' + resp.status);
       err.status = resp.status;
       throw err;
     }
+
     const data = await resp.json();
+
+    /* 额度用尽的两种表现形式：
+     *   1) quotaFinished: true
+     *   2) responseStatus: 429 / responseDetails 里含 "QUOTA" 或 "MYMEMORY WARNING" */
+    const details = String((data && data.responseDetails) || '');
+    if ((data && data.quotaFinished) || (data && data.responseStatus === 429) ||
+        /quota|MYMEMORY WARNING|USED ALL AVAILABLE/i.test(details)) {
+      this.markQuotaExhausted();
+      const err = new Error('mymemory-quota-exhausted: ' + (details.slice(0, 120) || 'quotaFinished'));
+      err.quota = true;
+      throw err;
+    }
+
     const translated = data && data.responseData && data.responseData.translatedText;
     if (!translated) throw new Error('mymemory-empty');
+
+    /* MyMemory 有时把提示语当成译文返回（如 "MYMEMORY WARNING: YOU USED ALL AVAILABLE
+     * FREE TRANSLATIONS FOR TODAY"），这种情况要当成失败而不是把英文提示显示给用户 */
+    if (/MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID/i.test(translated)) {
+      this.markQuotaExhausted();
+      const err = new Error('mymemory-notice: ' + translated.slice(0, 100));
+      err.quota = true;
+      throw err;
+    }
+
     return {
       translatedText: translated,
       detectedLanguageCode: (data.responseData && data.responseData.detectedLanguage) ||
@@ -244,11 +298,156 @@ class MyMemoryTranslator {
   }
 }
 
+
+/* ============================ DeepL（用户自填 key，可选） ============================
+ * DeepL Free 每月 50 万字符免费，质量优于 Google，且中国大陆可直连（无需代理）。
+ * 需要用户在设置里粘贴一次 API key（形如 xxxx-xxxx-xxxx:fx，以 :fx 结尾的是 Free 端点）。
+ * key 只存在本机 chrome.storage.local，不外传、不写日志。 */
+class DeepLTranslator {
+  constructor() {
+    this.lastError = null;
+  }
+
+  /* Free key 以 ":fx" 结尾，必须走 api-free.deepl.com；Pro key 走 api.deepl.com */
+  endpointFor(apiKey) {
+    return /:fx$/.test(String(apiKey || '').trim())
+      ? 'https://api-free.deepl.com/v2/translate'
+      : 'https://api.deepl.com/v2/translate';
+  }
+
+  /* 语言代码转换：DeepL 用大写、且部分代码与 Google 不同（zh-CN → ZH-HANS 等） */
+  static targetFor(code) {
+    const c = String(code || '').toLowerCase();
+    const map = {
+      'zh': 'ZH', 'zh-cn': 'ZH-HANS', 'zh-tw': 'ZH-HANT', 'zh-hans': 'ZH-HANS', 'zh-hant': 'ZH-HANT',
+      'en': 'EN-US', 'en-us': 'EN-US', 'en-gb': 'EN-GB', 'pt': 'PT-BR', 'pt-br': 'PT-BR',
+      'pt-pt': 'PT-PT',
+    };
+    if (map[c]) return map[c];
+    return c ? c.toUpperCase().split('-')[0] : 'ZH';
+  }
+
+  /* DeepL 不接受 'auto'；留空即自动检测 */
+  static sourceFor(code) {
+    const c = String(code || '').toLowerCase();
+    if (!c || c === 'auto') return '';
+    const map = { 'zh': 'ZH', 'zh-cn': 'ZH', 'zh-tw': 'ZH', 'en': 'EN', 'pt': 'PT' };
+    if (map[c]) return map[c];
+    return c.toUpperCase().split('-')[0];
+  }
+
+  async translate(text, sl, tl, signal, apiKey) {
+    const key = String(apiKey || '').trim();
+    if (!key) throw new Error('deepl-no-key');
+
+    const body = new URLSearchParams();
+    body.set('text', text);
+    body.set('target_lang', DeepLTranslator.targetFor(tl));
+    const src = DeepLTranslator.sourceFor(sl);
+    if (src) body.set('source_lang', src);
+    /* tag_handling=html 会让 DeepL 解析标签，字幕是纯文本，保持默认即可 */
+
+    const resp = await fetch(this.endpointFor(key), {
+      method: 'POST',
+      headers: {
+        'Authorization': 'DeepL-Auth-Key ' + key,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+      signal,
+    });
+
+    if (resp.status === 403) throw new Error('deepl-auth-failed');
+    if (resp.status === 429) throw new Error('deepl-quota-exceeded');
+    if (resp.status === 456) throw new Error('deepl-quota-exceeded');   // DeepL 字符额度用尽专用码
+    if (!resp.ok) {
+      const err = new Error('deepl-http-' + resp.status);
+      err.status = resp.status;
+      throw err;
+    }
+
+    const data = await resp.json();
+    const list = data && data.translations;
+    if (!Array.isArray(list) || !list.length) throw new Error('deepl-empty');
+
+    let translated = '';
+    for (const t of list) translated += (t && t.text) || '';
+
+    return {
+      translatedText: translated,
+      detectedLanguageCode: (list[0] && list[0].detected_source_language) || '',
+      dictionary: '',
+      transliteration: '',
+      transcription: '',
+    };
+  }
+}
+
+/* 自定义端点（用户自建代理，如 Cloudflare Worker），请求/响应格式见设置面板说明 */
+class CustomEndpointTranslator {
+  async translate(text, sl, tl, signal, endpoint) {
+    const url = String(endpoint || '').trim();
+    if (!url) throw new Error('custom-no-endpoint');
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, source: sl || 'auto', target: tl || 'zh-CN' }),
+      signal,
+    });
+    if (!resp.ok) throw new Error('custom-http-' + resp.status);
+    const data = await resp.json();
+    /* 兼容几种常见返回形态，尽量宽松，方便用户用自己的服务 */
+    const translated = (data && (data.translatedText || data.translation || data.text ||
+      (data.data && data.data.translatedText))) || '';
+    if (!translated) throw new Error('custom-empty');
+    return {
+      translatedText: String(translated),
+      detectedLanguageCode: (data && (data.detectedLanguageCode || data.detected_source_language)) || '',
+      dictionary: '',
+      transliteration: '',
+      transcription: '',
+    };
+  }
+}
+
 const bing = new BingTranslator();
+
 const google = new GoogleTranslator();
 const mymemory = new MyMemoryTranslator();
+const deepl = new DeepLTranslator();
+const customEndpoint = new CustomEndpointTranslator();
 const activeRequests = new Map();
 let lastGoodEngine = null; // 记住上次成功的引擎，下次优先走它，避免每次都白试
+
+/* DeepL key / 自定义端点：从 storage 读一次并跟随变化更新，
+ * 避免每次翻译都读取 storage（service worker 里读 storage 是异步的，会拖慢首包）。 */
+let storedDeepLKey = '';
+let storedCustomEndpoint = '';
+
+function refreshTranslatorConfig() {
+  try {
+    chrome.storage.local.get({ ktSettings: null }, (items) => {
+      if (chrome.runtime.lastError) return;
+      const s = (items && items.ktSettings) || {};
+      storedDeepLKey = typeof s.deeplKey === 'string' ? s.deeplKey : '';
+      storedCustomEndpoint = typeof s.customEndpoint === 'string' ? s.customEndpoint : '';
+      /* 配置变了就清掉"上次成功引擎"的记忆，否则会一直卡在已经不存在的引擎上 */
+      if (storedDeepLKey === '' && lastGoodEngine === 'deepl') lastGoodEngine = null;
+      if (storedCustomEndpoint === '' && lastGoodEngine === 'custom') lastGoodEngine = null;
+    });
+  } catch (e) { /* ignore */ }
+}
+
+refreshTranslatorConfig();
+
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.ktSettings) return;
+    const s = changes.ktSettings.newValue || {};
+    storedDeepLKey = typeof s.deeplKey === 'string' ? s.deeplKey : '';
+    storedCustomEndpoint = typeof s.customEndpoint === 'string' ? s.customEndpoint : '';
+  });
+} catch (e) { /* ignore */ }
 
 /* ============================ 离线音标词典（内置，纯本地，不联网） ============================
  * 数据：CMUdict（BSD-2-Clause）经 tools/make_ipa_dict.py 转成的美式 IPA，见 src/data/ipa-en.tsv。
@@ -439,17 +638,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'translate') {
     const controller = new AbortController();
     activeRequests.set(message.requestId, controller);
-    const all = { google, bing, mymemory };
-    const primaryKey = message.translatorKey === 'bing' ? 'bing' : 'google';
-    // 引擎顺序：上次成功的引擎 > 用户首选 > 其他（google → bing → mymemory）
-    const order = [lastGoodEngine, primaryKey, 'google', 'bing', 'mymemory']
-      .filter((k, i, arr) => k && all[k] && arr.indexOf(k) === i);
+    const all = { google, bing, mymemory, deepl, custom: customEndpoint };
+    const primaryKey = ['bing', 'mymemory', 'deepl', 'custom'].includes(message.translatorKey)
+      ? message.translatorKey : 'google';
+
+    /* 只有配置了才把 deepL / custom 放进候选链，避免每次翻译都白试一个必然失败的引擎 */
+    const configured = {
+      deepl: !!String(storedDeepLKey || '').trim(),
+      custom: !!String(storedCustomEndpoint || '').trim(),
+    };
+
+    /* 引擎顺序：上次成功的引擎 > 用户首选 > Google > Bing > 已配置的 DeepL > 已配置的自定义 > MyMemory
+     * MyMemory 放最后，因为它匿名额度最小、且额度耗尽后会熔断。 */
+    const order = [lastGoodEngine, primaryKey, 'google', 'bing', 'deepl', 'custom', 'mymemory']
+      .filter((k) => k && all[k])
+      .filter((k) => k !== 'deepl' || configured.deepl)
+      .filter((k) => k !== 'custom' || configured.custom)
+      .filter((k, i, arr) => arr.indexOf(k) === i);
 
     (async () => {
       const errors = [];
       for (const key of order) {
         try {
-          const r = await all[key].translate(message.text, message.sourceLanguageCode, message.targetLanguageCode, controller.signal);
+          const extra = key === 'deepl' ? storedDeepLKey
+            : key === 'custom' ? storedCustomEndpoint : undefined;
+          const r = await all[key].translate(message.text, message.sourceLanguageCode,
+            message.targetLanguageCode, controller.signal, extra);
           lastGoodEngine = key;
           sendResponse({
             translatedText: r.translatedText,

@@ -14,6 +14,62 @@
 
 ---
 
+## 0.4.3 — 2026-11-02
+
+**开发中，未上架。** 分支 `test`。翻译引擎可用性提升（MyMemory 额度熔断）+ 新增 DeepL 与自定义端点。
+
+### 新增
+
+- **DeepL 引擎（可选，需自填 API Key）**
+  - 免费额度 **50 万字符/月**，质量优于 Google，且**中国大陆可直连**（无需代理，这是相对 Google 最大的优势）。
+  - Free 版 Key 以 `:fx` 结尾 → 自动走 `api-free.deepl.com`；Pro 版 Key → `api.deepl.com`。
+  - 语言代码自动转换：`zh-CN → ZH-HANS`、`zh-TW → ZH-HANT`、`en → EN-US`、`pt-BR → PT-BR` 等；`auto` 不传 `source_lang`（交给 DeepL 自动检测）。
+  - 错误分类：`403 → deepl-auth-failed`（Key 无效）、`429/456 → deepl-quota-exceeded`（额度用尽）。
+- **自定义端点引擎（可选，需自填 URL）**
+  - 供用户接自建服务（如 Cloudflare Worker），协议：POST JSON `{"text","source","target"}`，返回 `{"translatedText"}`。
+  - 响应字段**宽松兼容**：`translatedText` / `translation` / `text` / `data.translatedText` 都能识别。
+- **弹窗「设置 → 翻译引擎」新增三项**：`MyMemory（免配置）`、`DeepL（需填 Key）`、`自定义端点`。
+  - 选择 DeepL / 自定义端点时**就地展开**对应配置块（输入框 + 说明 + 「测试连接」按钮 + 状态文字），切换引擎自动收起。
+  - **「测试连接」按钮**：用一条真实短句走完整后台链路，成功显示译文摘要，失败显示可操作的中英文原因（Key 无效 / 额度用尽 / 网络不通 / 端点格式不对等）。
+
+### 修复
+
+- **MyMemory 额度耗尽后不再反复白试**（免费匿名额度按 IP 计，约几千字符/天，一起看两三个视频就可能耗尽）。
+  - 新增**熔断机制**：命中额度上限后冷却 **1 小时**，期间直接抛 `quota` 错误，让引擎链立刻去试别的引擎，而不是逐个等待超时。
+  - 额度耗尽识别覆盖四种表现：`quotaFinished: true`、`responseStatus === 429`、`HTTP 429`、以及 `responseDetails` 含 `QUOTA` / `MYMEMORY WARNING`。
+  - 额外修掉一个展示层问题：MyMemory 有时把 `MYMEMORY WARNING: YOU USED ALL AVAILABLE FREE TRANSLATIONS FOR TODAY` 这句**英文提示当成译文返回**，旧代码会直接显示在气泡里；现在识别为失败并熔断，不再把英文警告当译文展示给用户。
+
+### 变更
+
+- **引擎候选顺序**：`上次成功的引擎 → 用户首选 → Google → Bing → 已配置的 DeepL → 已配置的自定义端点 → MyMemory`。
+  - 未填 Key / 端点的 DeepL 与自定义端点**会被自动排除**，不会每次翻译白试一个必然失败的引擎。
+  - MyMemory 排到最后（额度最小）。
+- `src/background.js` 新增 `storedDeepLKey` / `storedCustomEndpoint` 两个内存缓存 + `refreshTranslatorConfig()`，并监听 `chrome.storage.onChanged` 同步更新，避免每次翻译都异步读 storage 拖慢首包；配置被清空时**同步清掉 `lastGoodEngine`**，防止卡在已失效的引擎上。
+- `src/inject.js`：`translatorKey` 改为认 `bing/mymemory/deepl/custom` 四种；DeepL 与自定义端点**不走页面侧 Google 直连**（Key 与端点都在后台侧），一律经后台转发。
+- `src/manifest.json`：版本 `0.4.2 → 0.4.3`；`host_permissions` 新增 `https://api-free.deepl.com/*`、`https://api.deepl.com/*`（共 11 条）。自定义端点域名无法预知，由用户自填后由浏览器按 URL 访问。
+
+### 文档
+
+- `PRIVACY.md` §3 中英双语补充 DeepL 与自定义端点条款：**Key 只存本机 `chrome.storage.local`、不上传、不写日志、不进诊断报告**；未填 Key/端点时这两个地址完全不会被联系。
+- `src/THIRD_PARTY_NOTICES.md` 新增「可选第三方翻译引擎」表（五个引擎的免配置状态、额度、Key 要求）与 API Key 处理原则。
+- `tests/kt-engines-test.mjs` 新增 **38 条断言**：DeepL 语言映射 14 条、端点选择与错误码 7 条、MyMemory 额度熔断 9 条（含"熔断期内完全不发请求"）、自定义端点解析宽容度 8 条。四套测试共 **214 条 ALL PASS**。
+
+### 调研记录（实测于 2026-11-02，经代理）
+
+为找"除 Google / Bing 之外的免费免配置整句翻译"，逐个实测候选，结论如下：
+
+| 服务 | 结果 |
+| --- | --- |
+| MyMemory | ✅ 唯一可用，整句正常，中英双向正常 |
+| 微软 Edge `edge.microsoft.com/translate/auth` | ❌ 404，端点已下线 |
+| 有道 `dict.youdao.com/jsonapi` | ❌ 只返回词典释义，无整句翻译字段 |
+| LibreTranslate 公共实例 | ❌ `200 次/天` 已用尽；其余镜像 502/301/无响应 |
+| Lingva | ❌ Cloudflare 403 质询页 |
+| SimplyTranslate | ❌ 返回 JSON 但 `translated_text` 为空串 |
+| 腾讯 Transmart / Papago / Yandex | ❌ 需 token / 空响应 / session 失效 |
+
+**结论**：免 key 且能翻整句的只有 MyMemory（早已接入）。故本次只能通过 B 方案（用户自填 Key 或自建端点）来真正增加可用引擎。
+
 ## 0.4.2 — 2026-11-02
 
 **开发中，未上架。** 分支 `test`。修复用户实测「重开弹窗后所有设置/外观全部重置」的严重问题。

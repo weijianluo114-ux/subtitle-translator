@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "short_name": "SubtitleTranslator",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "__MSG_extDesc__",
   "default_locale": "zh_CN",
   "minimum_chrome_version": "88",
@@ -19,7 +19,9 @@
     "https://api.mymemory.translated.net/*",
     "https://kt-feedback.weijianluo114.workers.dev/*",
     "https://cdn.jsdelivr.net/*",
-    "https://raw.githubusercontent.com/*"
+    "https://raw.githubusercontent.com/*",
+    "https://api-free.deepl.com/*",
+    "https://api.deepl.com/*"
   ],
   "background": {
     "service_worker": "background.js"

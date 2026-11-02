@@ -34,6 +34,8 @@ const DEFAULT_SETTINGS = {
   showPhonetic: true,
   offlineDict: true,
   dictSource: 'auto',
+  deeplKey: '',
+  customEndpoint: '',
   dictMirror: '',
   tooltipFollowSubtitle: true,
   tooltip: {
@@ -123,6 +125,26 @@ const I18N = {
     langTip: '界面语言 / UI language',
     donateSub: '扫码请我喝杯咖啡，支持学费',
     donateStar: '如果它帮到了你，喜欢的话也可以点个 Star ⭐',
+    engineMyMemory: 'MyMemory（免配置）',
+    engineDeepL: 'DeepL（需填 Key）',
+    engineCustom: '自定义端点',
+    deeplKeyLabel: 'DeepL API Key',
+    deeplHint: '免费额度 50 万字符/月，国内可直连。到 deepl.com 注册后在「API」页获取，Free 版 Key 以 :fx 结尾。',
+    customEndpointLabel: '自定义端点 URL',
+    customHint: 'POST JSON {"text":"...","source":"auto","target":"zh-CN"}，返回 {"translatedText":"..."}，字段名也支持 translation / text。',
+    testConnection: '测试连接',
+    testing: '测试中…',
+    engineOk: '连接正常，译文',
+    engineFailed: '连接失败',
+    engineNeedConfig: '请先填写上面的配置',
+    errNoKey: '未填写 API Key',
+    errDeepLAuth: 'Key 无效或已失效，请检查是否复制完整',
+    errDeepLQuota: 'DeepL 本月免费额度已用完，可在本月重置后继续使用',
+    errNoEndpoint: '未填写端点 URL',
+    errEndpointStatus: '端点返回错误状态码',
+    errEndpointFormat: '端点返回内容无法识别，请检查返回字段名',
+    errNetwork: '网络不通，请检查代理或稍后重试',
+    errNoResponse: '后台无响应，请刷新扩展后重试',
     groupDict: '离线词典',
     offlineDict: '使用离线词典（优先使用本地释义）',
     dictLoading: '正在读取词典状态…',
@@ -224,6 +246,26 @@ const I18N = {
     langTip: 'UI language',
     donateSub: 'Scan to buy me a coffee — supports my school fees',
     donateStar: 'If it helped you, a Star would be lovely ⭐',
+    engineMyMemory: 'MyMemory (no setup)',
+    engineDeepL: 'DeepL (API key)',
+    engineCustom: 'Custom endpoint',
+    deeplKeyLabel: 'DeepL API key',
+    deeplHint: 'Free tier: 500k characters/month, works in mainland China. Sign up at deepl.com, then copy the key from the API page — Free keys end with :fx.',
+    customEndpointLabel: 'Custom endpoint URL',
+    customHint: 'POST JSON {"text":"...","source":"auto","target":"zh-CN"} and return {"translatedText":"..."}; translation / text are also accepted.',
+    testConnection: 'Test connection',
+    testing: 'Testing…',
+    engineOk: 'Connected — result',
+    engineFailed: 'Failed',
+    engineNeedConfig: 'Fill in the field above first',
+    errNoKey: 'No API key entered',
+    errDeepLAuth: 'Invalid key — check that you copied the whole key',
+    errDeepLQuota: 'DeepL monthly free quota used up; it resets next month',
+    errNoEndpoint: 'No endpoint URL entered',
+    errEndpointStatus: 'Endpoint returned an error status',
+    errEndpointFormat: 'Unrecognized response — check the field names it returns',
+    errNetwork: 'Network unreachable — check your proxy and retry',
+    errNoResponse: 'No response from background — reload the extension and retry',
     groupDict: 'Offline dictionary',
     offlineDict: 'Use offline dictionary (prefer local definitions)',
     dictLoading: 'Reading dictionary status…',
@@ -306,7 +348,7 @@ function normalizeSettings(raw) {
   pick('textOutline', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('textBold', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('background', [0, 25, 50, 75, 100], (v) => ([0, 25, 50, 75, 100].includes(Number(v)) ? Number(v) : null));
-  pick('translator', ['google', 'bing']);
+  pick('translator', ['google', 'bing', 'mymemory', 'deepl', 'custom']);
   pick('sourceLanguage', ['auto']);
   if (typeof src.targetLanguage === 'string' && src.targetLanguage) s.targetLanguage = src.targetLanguage;
   pick('autoPause', [true, false], (v) => (typeof v === 'boolean' ? v : null));
@@ -319,6 +361,8 @@ function normalizeSettings(raw) {
   pick('showPhonetic', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('offlineDict', [true, false], (v) => (typeof v === 'boolean' ? v : null));
   pick('dictSource', ['auto', 'offline', 'online']);
+  pick('deeplKey', null, (v) => (typeof v === 'string' ? v.trim().slice(0, 200) : null));
+  pick('customEndpoint', null, (v) => (typeof v === 'string' ? v.trim().slice(0, 400) : null));
   pick('dictMirror', null, (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 400) : null));
   if (src.tooltip && typeof src.tooltip === 'object') {
     const tk = ['fontFamily','fontSize','fontColor','fontOpacity','backgroundColor','backgroundOpacity','characterEdgeStyle','textBold'];
@@ -346,6 +390,10 @@ function render() {
   $('offline-dict').checked = settings.offlineDict !== false;
   $('dict-source').value = settings.dictSource;
   $('dict-mirror').value = settings.dictMirror || '';
+  $('deepl-key').value = settings.deeplKey || '';
+  $('custom-endpoint').value = settings.customEndpoint || '';
+  $('deepl-config').classList.toggle('kt-hidden', settings.translator !== 'deepl');
+  $('custom-config').classList.toggle('kt-hidden', settings.translator !== 'custom');
   $('translation-enabled').checked = settings.translationEnabled;
   $('auto-pause').checked = settings.autoPause;
   $('left-click-action').value = settings.leftClickAction;
@@ -437,6 +485,84 @@ function fillTooltipSelects() {
       sel.appendChild(o);
     }
   }
+}
+
+/* 引擎测试：用真实的一条短句走后台链路，把结果显示给用户 */
+
+function clearEngineStatus() {
+  for (const id of ['deepl-status', 'custom-status']) {
+    const el = $(id);
+    if (!el) continue;
+    el.textContent = '';
+    el.classList.remove('kt-dict-status-error', 'kt-dict-status-ok');
+  }
+}
+
+async function testEngine(key) {
+  const statusEl = $(key === 'deepl' ? 'deepl-status' : 'custom-status');
+  const btn = $(key === 'deepl' ? 'deepl-test' : 'custom-test');
+  const config = key === 'deepl' ? settings.deeplKey : settings.customEndpoint;
+
+  if (!config) {
+    statusEl.textContent = t('engineNeedConfig');
+    statusEl.classList.add('kt-dict-status-error');
+    return;
+  }
+
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = t('testing');
+  statusEl.textContent = '';
+  statusEl.classList.remove('kt-dict-status-error', 'kt-dict-status-ok');
+
+  try {
+    const result = await new Promise((resolve) => {
+      try {
+        chrome.runtime.sendMessage({
+          action: 'translate',
+          requestId: 'test-' + Date.now(),
+          translatorKey: key,
+          text: 'Hello, this is a connection test.',
+          sourceLanguageCode: 'en',
+          targetLanguageCode: settings.targetLanguage || 'zh-CN',
+        }, (resp) => {
+          const err = chrome.runtime.lastError;
+          if (err) { resolve({ error: err.message }); return; }
+          resolve(resp || { error: 'no-response' });
+        });
+      } catch (e) {
+        resolve({ error: String((e && e.message) || e) });
+      }
+    });
+
+    if (result && !result.error && result.translatedText) {
+      statusEl.textContent = t('engineOk') + '：' + result.translatedText.slice(0, 40);
+      statusEl.classList.add('kt-dict-status-ok');
+    } else {
+      statusEl.textContent = t('engineFailed') + '：' + humanizeEngineError(result && result.error);
+      statusEl.classList.add('kt-dict-status-error');
+    }
+  } catch (e) {
+    statusEl.textContent = t('engineFailed') + '：' + humanizeEngineError(String((e && e.message) || e));
+    statusEl.classList.add('kt-dict-status-error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
+}
+
+/* 后台/引擎报错 -> 用户能看懂的提示 */
+function humanizeEngineError(error) {
+  const raw = String(error || '');
+  if (/deepl-no-key/.test(raw)) return t('errNoKey');
+  if (/deepl-auth-failed|403/i.test(raw)) return t('errDeepLAuth');
+  if (/deepl-quota-exceeded|456/i.test(raw)) return t('errDeepLQuota');
+  if (/custom-no-endpoint/.test(raw)) return t('errNoEndpoint');
+  if (/custom-http-4|custom-http-5/.test(raw)) return t('errEndpointStatus') + ' ' + (raw.match(/\d{3}/) || [''])[0];
+  if (/custom-empty/.test(raw)) return t('errEndpointFormat');
+  if (/Failed to fetch|NetworkError|net::|fetch failed/i.test(raw)) return t('errNetwork');
+  if (/no-response/.test(raw)) return t('errNoResponse');
+  return raw;
 }
 
 /* 绑定 */
@@ -660,7 +786,24 @@ function bind() {
     $(id).addEventListener('change', () => { apply(); save(); });
   };
 
-  bindSel('translator', () => { settings.translator = $('translator').value; });
+  bindSel('translator', () => {
+    settings.translator = $('translator').value;
+    render();                      // 切换后立即显示/隐藏对应配置块
+    clearEngineStatus();
+  });
+
+  /* DeepL key / 自定义端点：输入即存盘（无需点保存） */
+  $('deepl-key').addEventListener('input', () => {
+    settings.deeplKey = $('deepl-key').value.trim();
+    clearEngineStatus();
+  });
+  $('custom-endpoint').addEventListener('input', () => {
+    settings.customEndpoint = $('custom-endpoint').value.trim();
+    clearEngineStatus();
+  });
+
+  $('deepl-test').addEventListener('click', () => testEngine('deepl'));
+  $('custom-test').addEventListener('click', () => testEngine('custom'));
   bindSel('source-language', () => { settings.sourceLanguage = $('source-language').value; });
   bindSel('target-language', () => { settings.targetLanguage = $('target-language').value; });
   bindCheck('sentence-translation', () => { settings.sentenceTranslation = $('sentence-translation').checked; });

@@ -55,8 +55,35 @@
         <select id="translator">
           <option value="google">Google</option>
           <option value="bing">Bing</option>
+          <option value="mymemory" data-i18n="engineMyMemory">MyMemory（免配置）</option>
+          <option value="deepl" data-i18n="engineDeepL">DeepL（需填 Key）</option>
+          <option value="custom" data-i18n="engineCustom">自定义端点</option>
         </select>
       </label>
+
+      <div id="deepl-config" class="kt-engine-config kt-hidden">
+        <label class="kt-row kt-row-stack">
+          <span data-i18n="deeplKeyLabel">DeepL API Key</span>
+          <input type="text" id="deepl-key" spellcheck="false" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx">
+        </label>
+        <div class="kt-engine-hint" data-i18n="deeplHint">免费额度 50 万字符/月，国内可直连。到 deepl.com 注册后在「API」页获取，Free 版 Key 以 :fx 结尾。</div>
+        <div class="kt-engine-test-row">
+          <button class="kt-dict-btn" id="deepl-test" data-i18n="testConnection">测试连接</button>
+          <span id="deepl-status" class="kt-dict-status"></span>
+        </div>
+      </div>
+
+      <div id="custom-config" class="kt-engine-config kt-hidden">
+        <label class="kt-row kt-row-stack">
+          <span data-i18n="customEndpointLabel">自定义端点 URL</span>
+          <input type="text" id="custom-endpoint" spellcheck="false" autocomplete="off" placeholder="https://your-worker.example.com/translate">
+        </label>
+        <div class="kt-engine-hint" data-i18n="customHint">POST JSON {"text":"...","source":"auto","target":"zh-CN"}，返回 {"translatedText":"..."}，字段名也支持 translation / text。</div>
+        <div class="kt-engine-test-row">
+          <button class="kt-dict-btn" id="custom-test" data-i18n="testConnection">测试连接</button>
+          <span id="custom-status" class="kt-dict-status"></span>
+        </div>
+      </div>
 
       <label class="kt-row">
         <span data-i18n="sourceLanguage">源语言</span>

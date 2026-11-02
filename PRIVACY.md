@@ -23,6 +23,12 @@
 - **Google Translate**（translate.googleapis.com / translate.google.com）——默认引擎；
 - **Bing Translator**（www.bing.com）——用户选择或 Google 不可用时的兜底；
 - **MyMemory**（api.mymemory.translated.net）——前两者均不可达时的最后兜底。
+- **DeepL**（api-free.deepl.com / api.deepl.com）——**可选**，仅在你于设置里选定该引擎并填写自己的 API Key 后才启用；
+- **你自建的自定义端点**——**可选**，仅在你填写端点 URL 后才启用；该 URL 由你指定，文本会按你填写的地址发送。
+
+> **关于 API Key**：DeepL 的 Key 与自定义端点 URL **只保存在你本机的 chrome.storage.local**，既不上传到我们的服务器，也不会写进任何日志或诊断报告。你可以随时在设置里清空。
+
+> **可选引擎默认关闭**：未填写 Key / 端点时，DeepL 与自定义端点不会出现在翻译候选链中，扩展不会联系这两个地址。
 
 **英文音标**：使用**内置于扩展的离线词典**（CMUdict 转换产物），纯本地查表，**不联网、不向任何第三方发送数据**。
 
@@ -97,6 +103,12 @@ Translated text is sent to the following third-party translation services (chose
 - **Google Translate** (translate.googleapis.com / translate.google.com) — default engine;
 - **Bing Translator** (www.bing.com) — optional, or fallback when Google is unavailable;
 - **MyMemory** (api.mymemory.translated.net) — last-resort fallback when the first two are unreachable.
+- **DeepL** (api-free.deepl.com / api.deepl.com) — **optional**; only used if you select it and enter your own API key;
+- **Your own custom endpoint** — **optional**; only used if you enter an endpoint URL, and text is sent to the address you specify.
+
+> **About API keys**: your DeepL key and custom endpoint URL are stored **only in your local chrome.storage.local**. They are never sent to our servers and never written into logs or diagnostics. You can clear them in settings at any time.
+
+> **Optional engines are off by default**: without a key or endpoint, DeepL and custom endpoints are excluded from the translation chain and the extension never contacts those addresses.
 
 **English phonetics**: provided by an **offline dictionary bundled with the extension** (derived from CMUdict). Lookups happen entirely on your device — **no network request, no data sent to any third party**.
 

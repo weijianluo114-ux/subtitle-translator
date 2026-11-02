@@ -53,7 +53,19 @@
 ## 数据流向声明（与商店隐私声明一致）
 
 - 无悬停翻译操作时：插件不产生任何对外网络请求（仅读取 YouTube 页面自身的字幕请求响应）。
-- 悬停翻译 / 整句翻译时：仅把被翻译文本与语言代码发送给所选引擎（Google：translate.googleapis.com；Bing：www.bing.com）。
+- 悬停翻译 / 整句翻译时：仅把被翻译文本与语言代码发送给所选引擎（Google：translate.googleapis.com；Bing：www.bing.com；MyMemory：api.mymemory.translated.net；DeepL：api-free.deepl.com，仅在你自填 Key 时；自定义端点：仅在你自填 URL 时）。
+
+## 可选第三方翻译引擎
+
+| 引擎 | 是否免配置 | 说明 |
+| --- | --- | --- |
+| Google Translate | 是（默认） | 网页翻译接口，无需注册 |
+| Bing Translator | 是 | 需要先从 www.bing.com/translator 抓取动态参数 |
+| MyMemory | 是 | 匿名免费额度约几千字符/天，额度耗尽后自动熔断 1 小时 |
+| DeepL | **否**，需自填 API Key | 免费额度 50 万字符/月；Free Key 以 `:fx` 结尾，走 api-free.deepl.com。Key 仅存本机 |
+| 自定义端点 | **否**，需自填 URL | 由用户自行部署（如 Cloudflare Worker）；扩展只向其 POST JSON |
+
+**API Key 处理原则**：DeepL 的 Key 只保存在 `chrome.storage.local`，不上传、不进日志、不进诊断报告；扩展不代理、不转发、不缓存该 Key。
 - 英文音标：使用**内置于扩展的离线词典**（`src/data/ipa-en.tsv`，由 CMUdict 转换），纯本地查表，不联网、不发送任何数据。
 - 可选离线词典：仅在你点击「下载」时才请求 `cdn.jsdelivr.net`（或你自填的镜像）取词典分片；下载完成后查词不再产生任何网络请求。整个过程不发送你的任何字幕内容。
 - 设置与翻译缓存仅保存在本机 chrome.storage.local，不收集、不上传任何用户数据。

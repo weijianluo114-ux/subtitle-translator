@@ -413,3 +413,53 @@ main { flex: 1; overflow-y: auto; padding: 10px 14px 6px; }
   outline: none;
   border-color: #2563eb;
 }
+
+/* ============================ 翻译引擎配置 ============================ */
+
+.kt-engine-config {
+  margin: 2px 0 8px;
+  padding: 9px 10px;
+  border: 1px solid #e3e6ee;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.kt-row-stack { display: block; }
+
+.kt-row-stack input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 5px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  border: 1px solid #dfe3ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2430;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.kt-row-stack input[type="text"]:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.kt-engine-hint {
+  margin-top: 5px;
+  font-size: 11px;
+  color: #8a8f9e;
+  line-height: 1.55;
+}
+
+.kt-engine-test-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.kt-engine-test-row .kt-dict-status { margin-top: 0; }
+
+.kt-dict-status-ok { color: #059669; }
+.kt-dict-status-error { color: #dc2626; }
+.kt-dict-status { display: inline-block; font-size: 11px; line-height: 1.5; word-break: break-all; }

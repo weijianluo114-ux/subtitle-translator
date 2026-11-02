@@ -98,6 +98,8 @@
     showPhonetic: true,
     offlineDict: true,
     dictSource: 'auto',
+    deeplKey: '',
+    customEndpoint: '',
     tooltip: {
       fontFamily: 'auto',
       fontSize: 'auto',
@@ -216,7 +218,7 @@
     pick('textOutline', null, bool);
     pick('textBold', null, bool);
     pick('background', null, (v) => ([0, 25, 50, 75, 100].includes(Number(v)) ? Number(v) : null));
-    pick('translator', ['google', 'bing']);
+    pick('translator', ['google', 'bing', 'mymemory', 'deepl', 'custom']);
     pick('sourceLanguage', null, (v) => (typeof v === 'string' && v ? v : null));
     pick('targetLanguage', null, (v) => (typeof v === 'string' && v ? v : null));
     pick('autoPause', null, bool);
@@ -229,6 +231,8 @@
     pick('showPhonetic', null, bool);
     pick('offlineDict', null, bool);
     pick('dictSource', ['auto', 'offline', 'online']);
+    pick('deeplKey', null, (v) => (typeof v === 'string' ? v.trim().slice(0, 200) : null));
+    pick('customEndpoint', null, (v) => (typeof v === 'string' ? v.trim().slice(0, 400) : null));
     if (src.tooltip && typeof src.tooltip === 'object') {
       for (const k of Object.keys(s.tooltip)) {
         const v = src.tooltip[k];
@@ -763,7 +767,9 @@
     const raw = String(text || '').trim();
     if (!raw) return null;
     const limited = raw.length > CFG.maxTranslateChars ? raw.slice(0, CFG.maxTranslateChars) : raw;
-    const translatorKey = STATE.settings.translator === 'bing' ? 'bing' : 'google';
+    /* 用户首选引擎：deepL / custom 也只能经后台转发（key 与端点都在后台侧） */
+    const preferred = STATE.settings.translator;
+    const translatorKey = ['bing', 'mymemory', 'deepl', 'custom'].includes(preferred) ? preferred : 'google';
 
     // 首选：页面侧直连 Google（走页面同款网络/代理）
     if (translatorKey === 'google') {
